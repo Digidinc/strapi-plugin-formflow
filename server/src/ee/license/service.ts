@@ -225,7 +225,9 @@ export function createLicenseService(strapi: Core.Strapi): LicenseService {
       }
 
       // Successful validation: refresh the cache, compute a fresh grace window, and
-      // mark the license active.
+      // mark the license active. Entitlement is granted BEFORE the store writes so
+      // a transient persistence failure never withholds a validly-licensed tier
+      // (the persisted cache only matters for grace across restarts).
       const now = new Date();
       _cache = {
         tier: result.tier,
@@ -234,13 +236,13 @@ export function createLicenseService(strapi: Core.Strapi): LicenseService {
         lastValidatedAt: now,
         graceUntil: new Date(now.getTime() + GRACE_DAYS * DAY_MS),
       };
+      _tier = result.tier;
+      _state = 'active';
       await persistCache(_cache);
       // Persist the key hash on a successful validation too: the key may have been
       // activated on a previous boot (so ensureActivated short-circuited) — this
       // guarantees a same-key reboot matches and avoids a needless reset.
       await store().set({ key: KEY_HASH_KEY, value: hashKey(licenseKey) });
-      _tier = result.tier;
-      _state = 'active';
     } catch (error) {
       strapi.log.warn('[FormFlow License] Unexpected error during refresh:', error);
     }
@@ -348,6 +350,9 @@ export function createLicenseService(strapi: Core.Strapi): LicenseService {
           strapi.log.warn('[FormFlow License] Scheduled validation failed:', err)
         );
       }, DAY_MS);
+      // Never keep the process alive just for license refresh (one-off CLI runs
+      // may load the plugin without ever invoking the destroy hook).
+      _refreshTimer.unref?.();
     } catch (error) {
       strapi.log.warn('[FormFlow License] init failed:', error);
     }

@@ -165,6 +165,12 @@ export async function activate(params: MorActivateParams): Promise<MorActivateRe
  * hard-expires it immediately, with NO grace. A 2xx body is parsed as before:
  * `valid` requires `json.valid === true && license_key.status === 'active'`, so
  * a 200 reporting an inactive/expired key still hard-expires.
+ *
+ * `expires_at` is DELIBERATELY not enforced client-side: Lemon Squeezy flips
+ * `status` to 'expired' itself when the expiry passes, and for subscriptions
+ * `expires_at` can lag behind a renewal (dunning/retry windows) while the key is
+ * still legitimately active — enforcing it here would wrongly cut off paying
+ * customers. Status is the single source of truth.
  */
 export async function validate(params: MorValidateParams): Promise<MorValidateResult> {
   const body: Record<string, unknown> = { license_key: params.licenseKey };
