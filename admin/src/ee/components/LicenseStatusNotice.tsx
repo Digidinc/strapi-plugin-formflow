@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 import { useEffect, useState } from 'react';
-import { Alert, Button } from '@strapi/design-system';
+import { Alert, Box, Button, Typography } from '@strapi/design-system';
 import { useIntl } from 'react-intl';
 
 import { useLicense } from '../hooks/useLicense';
@@ -46,6 +46,36 @@ export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProp
   const handleClose = () => setDismissedNotice(noticeIdentity);
 
   if (noticeIdentity === null || dismissedNotice === noticeIdentity) return null;
+
+  // The plugin shell owns the single live alert and Retry action. Compact
+  // instances only provide adjacent, readable context for a locked section.
+  if (compact && resolution === 'checking') {
+    if (!showChecking) return null;
+    return (
+      <Box>
+        <Typography variant="pi" textColor="neutral600">
+          {formatMessage({
+            id: 'formflow.license.checking',
+            defaultMessage: 'Checking FormFlow license…',
+          })}
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (compact && resolution === 'unavailable') {
+    return (
+      <Box>
+        <Typography variant="pi" textColor="neutral600">
+          {formatMessage({
+            id: 'formflow.license.unavailable',
+            defaultMessage:
+              'FormFlow could not verify the current license. Premium controls are temporarily unavailable. Free features remain available.',
+          })}
+        </Typography>
+      </Box>
+    );
+  }
 
   if (resolution === 'checking') {
     if (!showChecking) return null;

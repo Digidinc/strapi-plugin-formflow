@@ -7,6 +7,7 @@ import { PLUGIN_ID } from '../../pluginId';
 import { getTranslation } from '../../utils/getTranslation';
 import { useLicense } from '../hooks/useLicense';
 import { useAnalytics, type AnalyticsStats } from '../hooks/useAnalytics';
+import { LicenseStatusNotice } from '../components/LicenseStatusNotice';
 import { UpsellCard } from '../components/UpsellCard';
 
 export interface AnalyticsPageProps {
@@ -15,13 +16,7 @@ export interface AnalyticsPageProps {
 
 /** A single metric tile: a big number with a label underneath. */
 const MetricCard = ({ label, value }: { label: string; value: string }) => (
-  <Box
-    background="neutral0"
-    hasRadius
-    borderColor="neutral200"
-    padding={5}
-    shadow="tableShadow"
-  >
+  <Box background="neutral0" hasRadius borderColor="neutral200" padding={5} shadow="tableShadow">
     <Flex direction="column" alignItems="flex-start" gap={2}>
       <Typography variant="alpha" fontWeight="bold" textColor="neutral800">
         {value}
@@ -36,21 +31,46 @@ const MetricCard = ({ label, value }: { label: string; value: string }) => (
 /**
  * Pro analytics dashboard for a single form (route `forms/:formId/analytics`).
  *
- * Display gating: when `can('analytics')` is false (free tier, or while the
- * license is still loading / failed to load — the safe over-restrictive default)
- * we render an UpsellCard and never call `useAnalytics`. The server is the
- * authoritative gate (402 on the read endpoint); this is purely UX.
+ * Display gating keeps unresolved verification distinct from a confirmed
+ * unentitled plan. Only the entitled child calls `useAnalytics`; the server is
+ * still the authoritative gate (402 on the read endpoint).
  */
 export const AnalyticsPage = ({ formDocumentId }: AnalyticsPageProps) => {
   const { formatMessage } = useIntl();
-  const { can } = useLicense();
+  const { access } = useLicense();
 
   const title = formatMessage({
     id: getTranslation('analytics.title'),
     defaultMessage: 'Analytics',
   });
 
-  const entitled = can('analytics');
+  const analyticsAccess = access('analytics');
+  let content = null;
+
+  switch (analyticsAccess) {
+    case 'checking':
+      content = <LicenseStatusNotice compact />;
+      break;
+    case 'unavailable':
+      content = <LicenseStatusNotice compact />;
+      break;
+    case 'unentitled':
+      content = (
+        <UpsellCard
+          access={analyticsAccess}
+          feature="analytics"
+          description={formatMessage({
+            id: getTranslation('analytics.upsell'),
+            defaultMessage:
+              'Track views, starts, completions and drop-offs with a FormFlow Pro license.',
+          })}
+        />
+      );
+      break;
+    case 'entitled':
+      content = <EntitledAnalytics formDocumentId={formDocumentId} />;
+      break;
+  }
 
   return (
     <Page.Main>
@@ -63,20 +83,7 @@ export const AnalyticsPage = ({ formDocumentId }: AnalyticsPageProps) => {
           defaultMessage: 'Views, starts, completions and drop-offs for this form.',
         })}
       />
-      <Layouts.Content>
-        {entitled ? (
-          <EntitledAnalytics formDocumentId={formDocumentId} />
-        ) : (
-          <UpsellCard
-            feature="analytics"
-            description={formatMessage({
-              id: getTranslation('analytics.upsell'),
-              defaultMessage:
-                'Track views, starts, completions and drop-offs with a FormFlow Pro license.',
-            })}
-          />
-        )}
-      </Layouts.Content>
+      <Layouts.Content>{content}</Layouts.Content>
     </Page.Main>
   );
 };
@@ -104,12 +111,7 @@ const EntitledAnalytics = ({ formDocumentId }: { formDocumentId: string }) => {
 
   if (error) {
     return (
-      <Box
-        background="danger100"
-        hasRadius
-        borderColor="danger200"
-        padding={4}
-      >
+      <Box background="danger100" hasRadius borderColor="danger200" padding={4}>
         <Typography textColor="danger600">{error}</Typography>
       </Box>
     );
@@ -150,14 +152,7 @@ const EntitledAnalytics = ({ formDocumentId }: { formDocumentId: string }) => {
   return (
     <Grid.Root gap={4} gridCols={12}>
       {metrics.map((metric) => (
-        <Grid.Item
-          key={metric.label}
-          col={4}
-          xs={12}
-          s={6}
-          direction="column"
-          alignItems="stretch"
-        >
+        <Grid.Item key={metric.label} col={4} xs={12} s={6} direction="column" alignItems="stretch">
           <MetricCard label={metric.label} value={metric.value} />
         </Grid.Item>
       ))}

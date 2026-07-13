@@ -24,8 +24,7 @@ export const API = {
   // (GET /formflow/forms/:formId/submissions/export).
   exportSubmissions: (formId: string) => `/${PLUGIN_ID}/forms/${formId}/submissions/export`,
   // Scheduled-export CRUD (Pro). GET reads, POST saves, DELETE clears.
-  scheduleExport: (formId: string) =>
-    `/${PLUGIN_ID}/forms/${formId}/submissions/schedule-export`,
+  scheduleExport: (formId: string) => `/${PLUGIN_ID}/forms/${formId}/submissions/schedule-export`,
 
   // Webhooks
   testWebhook: (formId: string) => `/${PLUGIN_ID}/forms/${formId}/webhooks/test`,
@@ -185,12 +184,16 @@ export const rawRequest = async (
     // refresh/retry the way `useFetchClient` does, so steer the user to the
     // one action that reissues a valid token: reloading the page.
     if (response.status === 401) {
-      throw new Error('Your session has expired. Please reload the page and try again.');
+      throw Object.assign(
+        new Error('Your session has expired. Please reload the page and try again.'),
+        { status: response.status }
+      );
     }
 
     const serverMessage = extractErrorMessage(text);
-    throw new Error(
-      serverMessage || `Request failed with status ${response.status}`
+    throw Object.assign(
+      new Error(serverMessage || `Request failed with status ${response.status}`),
+      { status: response.status }
     );
   }
 

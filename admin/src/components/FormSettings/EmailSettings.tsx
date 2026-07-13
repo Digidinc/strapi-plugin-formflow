@@ -22,7 +22,9 @@ import { EmailNotification } from '../../utils/api';
 import { useLicense } from '../../ee/hooks/useLicense';
 import { GatedButton } from '../../ee/components/GatedButton';
 import { LockedSection } from '../../ee/components/LockedSection';
+import { LicenseStatusNotice } from '../../ee/components/LicenseStatusNotice';
 import { ProBadge } from '../../ee/components/ProBadge';
+import { premiumMutationPolicy } from '../../ee/license-state';
 
 export interface EmailSettingsProps {
   notifications: EmailNotification[];
@@ -85,11 +87,21 @@ const isValidEmail = (email: string): boolean => {
  */
 export const EmailSettings = ({ notifications, onChange, formFields = [] }: EmailSettingsProps) => {
   const { formatMessage } = useIntl();
-  const { can } = useLicense();
-  const emailAdvanced = can('email.advanced');
-  const emailTemplate = can('email.customTemplate');
-  const emailAutoresponder = can('email.autoresponder');
-  const emailWhiteLabel = can('email.whiteLabel');
+  const { access } = useLicense();
+  const emailAdvancedAccess = access('email.advanced');
+  const emailTemplateAccess = access('email.customTemplate');
+  const emailAutoresponderAccess = access('email.autoresponder');
+  const emailWhiteLabelAccess = access('email.whiteLabel');
+  const emailAdvancedPolicy = premiumMutationPolicy(emailAdvancedAccess);
+  const emailTemplatePolicy = premiumMutationPolicy(emailTemplateAccess);
+  const emailAutoresponderPolicy = premiumMutationPolicy(emailAutoresponderAccess);
+  const emailWhiteLabelPolicy = premiumMutationPolicy(emailWhiteLabelAccess);
+  const hasUnknownEmailAccess = [
+    emailAdvancedAccess,
+    emailTemplateAccess,
+    emailAutoresponderAccess,
+    emailWhiteLabelAccess,
+  ].some((featureAccess) => featureAccess === 'checking' || featureAccess === 'unavailable');
 
   // The email-type fields that can supply the submitter's address.
   const emailFields = useMemo(
@@ -101,14 +113,15 @@ export const EmailSettings = ({ notifications, onChange, formFields = [] }: Emai
 
   // Normalise to records that always carry a stable id for keying.
   const items = useMemo<NotificationWithId[]>(() => withIds(notifications), [notifications]);
+  const canPersistNotificationIds = items.length <= 1 || emailAdvancedPolicy.canEdit;
 
-  // Persist generated ids back to the parent when existing records lack them.
+  // The first notification is free. Additional records are premium, so keep
+  // generated keys editor-local until premium authoring access is confirmed.
   useEffect(() => {
-    if (needsIds(notifications)) {
+    if (needsIds(notifications) && canPersistNotificationIds) {
       onChange(items);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notifications]);
+  }, [canPersistNotificationIds, items, notifications, onChange]);
 
   const invalidEmailMessage = formatMessage({
     id: getTranslation('notifications.email.invalidEmail'),
@@ -153,6 +166,34 @@ export const EmailSettings = ({ notifications, onChange, formFields = [] }: Emai
     const updated = [...items];
     updated[index] = { ...updated[index], [key]: value };
     onChange(updated);
+  };
+
+  const removeLockedNotification = (id: string, index: number) => {
+    if (!emailAdvancedPolicy.canRemove) return;
+    removeNotification(id, index);
+  };
+
+  const clearReplyTo = (id: string, index: number) => {
+    if (!emailTemplatePolicy.canRemove) return;
+    updateNotification(index, 'replyTo', undefined);
+    setError(`${id}-replyTo`, null);
+  };
+
+  const clearEmailTemplate = (index: number) => {
+    if (!emailTemplatePolicy.canRemove) return;
+    updateNotification(index, 'template', undefined);
+  };
+
+  const disableAutoresponder = (index: number) => {
+    if (!emailAutoresponderPolicy.canRemove) return;
+    const updated = [...items];
+    updated[index] = { ...updated[index], isAutoresponder: false, toField: undefined };
+    onChange(updated);
+  };
+
+  const restoreBranding = (index: number) => {
+    if (!emailWhiteLabelPolicy.canRemove) return;
+    updateNotification(index, 'omitBranding', false);
   };
 
   const getRecipients = (notification: EmailNotification, field: RecipientField): string[] => {
@@ -209,7 +250,8 @@ export const EmailSettings = ({ notifications, onChange, formFields = [] }: Emai
   const renderRecipientEditor = (
     notification: NotificationWithId,
     index: number,
-    field: RecipientField
+    field: RecipientField,
+    disabled = false
   ) => {
     const recipients = getRecipients(notification, field);
     const isRequired = field === 'to';
@@ -226,6 +268,7 @@ export const EmailSettings = ({ notifications, onChange, formFields = [] }: Emai
             variant="secondary"
             startIcon={<Plus />}
             onClick={() => addRecipient(index, field)}
+            disabled={disabled}
           >
             {formatMessage({
               id: getTranslation('notifications.email.addRecipient'),
@@ -257,6 +300,7 @@ export const EmailSettings = ({ notifications, onChange, formFields = [] }: Emai
                           defaultMessage: 'recipient@example.com',
                         })}
                         value={email}
+                        readOnly={disabled}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           updateRecipient(notifId, index, field, recipientIndex, e.target.value)
                         }
@@ -270,7 +314,7 @@ export const EmailSettings = ({ notifications, onChange, formFields = [] }: Emai
                       defaultMessage: 'Remove recipient',
                     })}
                     onClick={() => removeRecipient(notifId, index, field, recipientIndex)}
-                    disabled={isRequired && recipients.length === 1}
+                    disabled={disabled || (isRequired && recipients.length === 1)}
                     variant="ghost"
                     withTooltip={false}
                   >
@@ -314,7 +358,7 @@ export const EmailSettings = ({ notifications, onChange, formFields = [] }: Emai
           </Button>
         ) : (
           <GatedButton
-            can={emailAdvanced}
+            access={emailAdvancedAccess}
             feature="email.advanced"
             size="S"
             startIcon={<Plus />}
@@ -327,6 +371,8 @@ export const EmailSettings = ({ notifications, onChange, formFields = [] }: Emai
           </GatedButton>
         )}
       </Flex>
+
+      {hasUnknownEmailAccess && <LicenseStatusNotice compact />}
 
       {/* Empty State */}
       {items.length === 0 ? (
@@ -344,319 +390,467 @@ export const EmailSettings = ({ notifications, onChange, formFields = [] }: Emai
         <Flex direction="column" gap={4} alignItems="stretch">
           {items.map((notification, index) => {
             const notifId = notification.id;
-            return (
-            <Box
-              key={notifId}
-              padding={4}
-              background="neutral0"
-              hasRadius
-              shadow="tableShadow"
-              borderColor="neutral200"
-              borderStyle="solid"
-              borderWidth="1px"
-            >
-              {/* Notification Header */}
-              <Flex justifyContent="space-between" alignItems="flex-start" marginBottom={4}>
-                <Checkbox
-                  checked={notification.enabled}
-                  onCheckedChange={(checked: boolean) =>
-                    updateNotification(index, 'enabled', checked)
-                  }
-                >
-                  <Typography fontWeight="bold">
-                    {formatMessage(
-                      {
-                        id: getTranslation('notifications.email.itemTitle'),
-                        defaultMessage: 'Notification #{number}',
-                      },
-                      { number: index + 1 }
-                    )}
-                    {!notification.enabled && (
-                      <Typography tag="span" variant="pi" textColor="neutral500">
-                        {' '}
-                        {formatMessage({
-                          id: getTranslation('common.disabled'),
-                          defaultMessage: '(Disabled)',
-                        })}
-                      </Typography>
-                    )}
-                  </Typography>
-                </Checkbox>
-                <IconButton
-                  label={formatMessage({
-                    id: getTranslation('notifications.email.remove'),
-                    defaultMessage: 'Remove notification',
-                  })}
-                  onClick={() => removeNotification(notifId, index)}
-                  variant="ghost"
-                  withTooltip={false}
-                >
-                  <Trash />
-                </IconButton>
-              </Flex>
+            const additionalNotificationReasonId = `notification-${notifId}-locked-reason`;
+            const renderNotification = (notificationDisabled: boolean) => (
+              <Box
+                key={notifId}
+                padding={4}
+                background="neutral0"
+                hasRadius
+                shadow="tableShadow"
+                borderColor="neutral200"
+                borderStyle="solid"
+                borderWidth="1px"
+              >
+                {/* Notification Header */}
+                <Flex justifyContent="space-between" alignItems="flex-start" marginBottom={4}>
+                  <Checkbox
+                    checked={notification.enabled}
+                    disabled={notificationDisabled}
+                    onCheckedChange={(checked: boolean) =>
+                      updateNotification(index, 'enabled', checked)
+                    }
+                  >
+                    <Typography fontWeight="bold">
+                      {formatMessage(
+                        {
+                          id: getTranslation('notifications.email.itemTitle'),
+                          defaultMessage: 'Notification #{number}',
+                        },
+                        { number: index + 1 }
+                      )}
+                      {!notification.enabled && (
+                        <Typography tag="span" variant="pi" textColor="neutral500">
+                          {' '}
+                          {formatMessage({
+                            id: getTranslation('common.disabled'),
+                            defaultMessage: '(Disabled)',
+                          })}
+                        </Typography>
+                      )}
+                    </Typography>
+                  </Checkbox>
+                  <IconButton
+                    label={formatMessage({
+                      id: getTranslation('notifications.email.remove'),
+                      defaultMessage: 'Remove notification',
+                    })}
+                    onClick={() => removeNotification(notifId, index)}
+                    disabled={notificationDisabled}
+                    variant="ghost"
+                    withTooltip={false}
+                  >
+                    <Trash />
+                  </IconButton>
+                </Flex>
 
-              <Flex direction="column" gap={4} alignItems="stretch">
-                {/* Recipients: To / Cc / Bcc. When the notification is an
+                <Flex direction="column" gap={4} alignItems="stretch">
+                  {/* Recipients: To / Cc / Bcc. When the notification is an
                     autoresponder, the static `to` list is overridden at runtime
                     by the submitter's email, so it is dimmed and read-only. */}
-                {notification.isAutoresponder ? (
-                  <Box>
-                    <Box style={{ pointerEvents: 'none', opacity: 0.6 }} aria-disabled>
-                      {renderRecipientEditor(notification, index, 'to')}
+                  {notification.isAutoresponder ? (
+                    <Box>
+                      <Box style={{ opacity: 0.6 }} aria-disabled>
+                        {renderRecipientEditor(notification, index, 'to', true)}
+                      </Box>
+                      <Box paddingTop={1}>
+                        <Typography variant="pi" textColor="neutral500">
+                          {formatMessage({
+                            id: getTranslation(
+                              'notifications.email.autoresponder.staticRecipientsHint'
+                            ),
+                            defaultMessage:
+                              "Static recipients are overridden by the submitter's email when autoresponder is active.",
+                          })}
+                        </Typography>
+                      </Box>
                     </Box>
-                    <Box paddingTop={1}>
-                      <Typography variant="pi" textColor="neutral500">
-                        {formatMessage({
-                          id: getTranslation(
-                            'notifications.email.autoresponder.staticRecipientsHint'
-                          ),
-                          defaultMessage:
-                            "Static recipients are overridden by the submitter's email when autoresponder is active.",
-                        })}
-                      </Typography>
-                    </Box>
-                  </Box>
-                ) : (
-                  renderRecipientEditor(notification, index, 'to')
-                )}
-                {renderRecipientEditor(notification, index, 'cc')}
-                {renderRecipientEditor(notification, index, 'bcc')}
+                  ) : (
+                    renderRecipientEditor(notification, index, 'to', notificationDisabled)
+                  )}
+                  {renderRecipientEditor(notification, index, 'cc', notificationDisabled)}
+                  {renderRecipientEditor(notification, index, 'bcc', notificationDisabled)}
 
-                <Divider />
+                  <Divider />
 
-                {/* Subject and Reply-To Row */}
-                <Flex gap={6} alignItems="flex-start">
-                  <Box flex="1">
-                    <Field.Root
-                      name={`notification-${notifId}-subject`}
-                      hint={formatMessage({
-                        id: getTranslation('notifications.email.subject.hint'),
-                        defaultMessage: 'Use {{form.title}} and {{field.name}} for dynamic values',
-                      })}
-                    >
-                      <Field.Label>
-                        {formatMessage({
-                          id: getTranslation('notifications.email.subject.label'),
-                          defaultMessage: 'Subject',
-                        })}
-                      </Field.Label>
-                      <TextInput
-                        value={notification.subject}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          updateNotification(index, 'subject', e.target.value)
-                        }
-                        placeholder={formatMessage({
-                          id: getTranslation('notifications.email.subject.placeholder'),
-                          defaultMessage: 'New form submission',
-                        })}
-                      />
-                      <Field.Hint />
-                    </Field.Root>
-                  </Box>
-
-                  <Box flex="1">
-                    <LockedSection
-                      can={emailTemplate}
-                      feature="email.customTemplate"
-                      mode="readonly"
-                    >
+                  {/* Subject and Reply-To Row */}
+                  <Flex gap={6} alignItems="flex-start">
+                    <Box flex="1">
                       <Field.Root
-                        name={`notification-${notifId}-replyTo`}
-                        error={validationErrors[`${notifId}-replyTo`] || false}
+                        name={`notification-${notifId}-subject`}
                         hint={formatMessage({
-                          id: getTranslation('notifications.email.replyTo.hint'),
-                          defaultMessage: "Use {{field.email}} for the submitter's email",
+                          id: getTranslation('notifications.email.subject.hint'),
+                          defaultMessage:
+                            'Use {{form.title}} and {{field.name}} for dynamic values',
                         })}
                       >
                         <Field.Label>
                           {formatMessage({
-                            id: getTranslation('notifications.email.replyTo.label'),
-                            defaultMessage: 'Reply-To',
+                            id: getTranslation('notifications.email.subject.label'),
+                            defaultMessage: 'Subject',
                           })}
-                          {!emailTemplate && (
-                            <>
-                              {' '}
-                              <ProBadge tier="pro" />
-                            </>
-                          )}
                         </Field.Label>
                         <TextInput
-                          value={notification.replyTo || ''}
+                          value={notification.subject}
+                          readOnly={notificationDisabled}
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            handleReplyToChange(notifId, index, e.target.value)
+                            updateNotification(index, 'subject', e.target.value)
                           }
-                          placeholder="{{field.email}}"
+                          placeholder={formatMessage({
+                            id: getTranslation('notifications.email.subject.placeholder'),
+                            defaultMessage: 'New form submission',
+                          })}
                         />
                         <Field.Hint />
-                        <Field.Error />
                       </Field.Root>
-                    </LockedSection>
-                  </Box>
-                </Flex>
+                    </Box>
 
-                <Divider />
-
-                {/* Autoresponder (Pro): send to the submitter's email field */}
-                <Box>
-                  <LockedSection
-                    can={emailAutoresponder}
-                    feature="email.autoresponder"
-                    mode="readonly"
-                  >
-                    <Flex direction="column" gap={3} alignItems="stretch">
-                      <Checkbox
-                        checked={!!notification.isAutoresponder}
-                        onCheckedChange={(checked: boolean) =>
-                          updateNotification(index, 'isAutoresponder', checked)
-                        }
+                    <Box flex="1">
+                      <LockedSection
+                        access={emailTemplateAccess}
+                        feature="email.customTemplate"
+                        mode="readonly"
                       >
-                        {formatMessage({
-                          id: getTranslation('notifications.email.autoresponder.label'),
-                          defaultMessage: 'Send to submitter (autoresponder)',
-                        })}
-                        {!emailAutoresponder && (
-                          <>
-                            {' '}
-                            <ProBadge tier="pro" />
-                          </>
+                        {({ disabled }) => (
+                          <Field.Root
+                            name={`notification-${notifId}-replyTo`}
+                            error={validationErrors[`${notifId}-replyTo`] || false}
+                            hint={formatMessage({
+                              id: getTranslation('notifications.email.replyTo.hint'),
+                              defaultMessage: "Use {{field.email}} for the submitter's email",
+                            })}
+                          >
+                            <Field.Label>
+                              {formatMessage({
+                                id: getTranslation('notifications.email.replyTo.label'),
+                                defaultMessage: 'Reply-To',
+                              })}
+                              {emailTemplateAccess === 'unentitled' && (
+                                <>
+                                  {' '}
+                                  <ProBadge tier="pro" />
+                                </>
+                              )}
+                            </Field.Label>
+                            <TextInput
+                              value={notification.replyTo || ''}
+                              readOnly={notificationDisabled || disabled}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                handleReplyToChange(notifId, index, e.target.value)
+                              }
+                              placeholder="{{field.email}}"
+                            />
+                            <Field.Hint />
+                            <Field.Error />
+                          </Field.Root>
                         )}
-                      </Checkbox>
+                      </LockedSection>
+                      {!notificationDisabled &&
+                        notification.replyTo &&
+                        emailTemplateAccess !== 'entitled' && (
+                          <Box paddingTop={2}>
+                            <Button
+                              size="S"
+                              variant="tertiary"
+                              onClick={() => clearReplyTo(notifId, index)}
+                              disabled={!emailTemplatePolicy.canRemove}
+                            >
+                              {formatMessage({
+                                id: getTranslation('notifications.email.cleanup.clearReplyTo'),
+                                defaultMessage: 'Clear Reply-To',
+                              })}
+                            </Button>
+                          </Box>
+                        )}
+                    </Box>
+                  </Flex>
 
-                      {notification.isAutoresponder && (
+                  <Divider />
+
+                  {/* Autoresponder (Pro): send to the submitter's email field */}
+                  <Box>
+                    <LockedSection
+                      access={emailAutoresponderAccess}
+                      feature="email.autoresponder"
+                      mode="readonly"
+                    >
+                      {({ disabled }) => (
+                        <Flex direction="column" gap={3} alignItems="stretch">
+                          <Checkbox
+                            checked={!!notification.isAutoresponder}
+                            disabled={notificationDisabled || disabled}
+                            onCheckedChange={(checked: boolean) =>
+                              updateNotification(index, 'isAutoresponder', checked)
+                            }
+                          >
+                            {formatMessage({
+                              id: getTranslation('notifications.email.autoresponder.label'),
+                              defaultMessage: 'Send to submitter (autoresponder)',
+                            })}
+                            {emailAutoresponderAccess === 'unentitled' && (
+                              <>
+                                {' '}
+                                <ProBadge tier="pro" />
+                              </>
+                            )}
+                          </Checkbox>
+
+                          {notification.isAutoresponder && (
+                            <Field.Root
+                              name={`notification-${notifId}-toField`}
+                              hint={formatMessage({
+                                id: getTranslation('notifications.email.toField.hint'),
+                                defaultMessage:
+                                  'Leave blank to use the first email-type field found in the submission.',
+                              })}
+                            >
+                              <Field.Label>
+                                {formatMessage({
+                                  id: getTranslation('notifications.email.toField.label'),
+                                  defaultMessage: 'Submitter email field',
+                                })}
+                              </Field.Label>
+                              <SingleSelect
+                                value={notification.toField ?? ''}
+                                disabled={notificationDisabled || disabled}
+                                onChange={(value: string | number) =>
+                                  updateNotification(index, 'toField', String(value) || undefined)
+                                }
+                                placeholder={formatMessage({
+                                  id: getTranslation('notifications.email.toField.placeholder'),
+                                  defaultMessage: 'Select a field (optional)',
+                                })}
+                              >
+                                {emailFields.map((field) => (
+                                  <SingleSelectOption key={field.name} value={field.name}>
+                                    {field.label || field.name}
+                                  </SingleSelectOption>
+                                ))}
+                              </SingleSelect>
+                              <Field.Hint />
+                            </Field.Root>
+                          )}
+                        </Flex>
+                      )}
+                    </LockedSection>
+                    {!notificationDisabled &&
+                      notification.isAutoresponder &&
+                      emailAutoresponderAccess !== 'entitled' && (
+                        <Box paddingTop={2}>
+                          <Button
+                            size="S"
+                            variant="tertiary"
+                            onClick={() => disableAutoresponder(index)}
+                            disabled={!emailAutoresponderPolicy.canRemove}
+                          >
+                            {formatMessage({
+                              id: getTranslation(
+                                'notifications.email.cleanup.disableAutoresponder'
+                              ),
+                              defaultMessage: 'Disable autoresponder',
+                            })}
+                          </Button>
+                        </Box>
+                      )}
+                  </Box>
+
+                  <Divider />
+
+                  {/* Custom email body template (optional) */}
+                  <Box>
+                    <LockedSection
+                      access={emailTemplateAccess}
+                      feature="email.customTemplate"
+                      mode="readonly"
+                    >
+                      {({ disabled }) => (
                         <Field.Root
-                          name={`notification-${notifId}-toField`}
+                          name={`notification-${notifId}-template`}
                           hint={formatMessage({
-                            id: getTranslation('notifications.email.toField.hint'),
+                            id: getTranslation('notifications.email.template.hint'),
                             defaultMessage:
-                              'Leave blank to use the first email-type field found in the submission.',
+                              'Optional. Custom email body with {{form.title}}, {{form.slug}}, {{submission.id}}, {{submission.createdAt}}, {{data.fieldName}} for a single field, and {{data}} for all fields. Leave empty to use the default formatted email. HTML is allowed; submitted values are escaped automatically.',
                           })}
                         >
                           <Field.Label>
                             {formatMessage({
-                              id: getTranslation('notifications.email.toField.label'),
-                              defaultMessage: 'Submitter email field',
+                              id: getTranslation('notifications.email.template.label'),
+                              defaultMessage: 'Email template',
                             })}
+                            {emailTemplateAccess === 'unentitled' && (
+                              <>
+                                {' '}
+                                <ProBadge tier="pro" />
+                              </>
+                            )}
                           </Field.Label>
-                          <SingleSelect
-                            value={notification.toField ?? ''}
-                            onChange={(value: string | number) =>
-                              updateNotification(index, 'toField', String(value) || undefined)
+                          <Textarea
+                            rows={6}
+                            value={notification.template || ''}
+                            readOnly={notificationDisabled || disabled}
+                            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                              updateNotification(index, 'template', e.target.value || undefined)
                             }
                             placeholder={formatMessage({
-                              id: getTranslation('notifications.email.toField.placeholder'),
-                              defaultMessage: 'Select a field (optional)',
+                              id: getTranslation('notifications.email.template.placeholder'),
+                              defaultMessage: 'New submission for {{form.title}}\n\n{{data}}',
                             })}
-                          >
-                            {emailFields.map((field) => (
-                              <SingleSelectOption key={field.name} value={field.name}>
-                                {field.label || field.name}
-                              </SingleSelectOption>
-                            ))}
-                          </SingleSelect>
+                          />
                           <Field.Hint />
                         </Field.Root>
                       )}
-                    </Flex>
-                  </LockedSection>
-                </Box>
+                    </LockedSection>
+                    {!notificationDisabled &&
+                      notification.template &&
+                      emailTemplateAccess !== 'entitled' && (
+                        <Box paddingTop={2}>
+                          <Button
+                            size="S"
+                            variant="tertiary"
+                            onClick={() => clearEmailTemplate(index)}
+                            disabled={!emailTemplatePolicy.canRemove}
+                          >
+                            {formatMessage({
+                              id: getTranslation('notifications.email.cleanup.clearTemplate'),
+                              defaultMessage: 'Clear email template',
+                            })}
+                          </Button>
+                        </Box>
+                      )}
+                  </Box>
 
-                <Divider />
+                  <Divider />
 
-                {/* Custom email body template (optional) */}
-                <Box>
-                  <LockedSection
-                    can={emailTemplate}
-                    feature="email.customTemplate"
-                    mode="readonly"
+                  {/* Include Data Toggle */}
+                  <Checkbox
+                    checked={notification.includeData !== false}
+                    disabled={notificationDisabled}
+                    onCheckedChange={(checked: boolean) =>
+                      updateNotification(index, 'includeData', checked)
+                    }
                   >
-                    <Field.Root
-                      name={`notification-${notifId}-template`}
-                      hint={formatMessage({
-                        id: getTranslation('notifications.email.template.hint'),
-                        defaultMessage:
-                          'Optional. Custom email body with {{form.title}}, {{form.slug}}, {{submission.id}}, {{submission.createdAt}}, {{data.fieldName}} for a single field, and {{data}} for all fields. Leave empty to use the default formatted email. HTML is allowed; submitted values are escaped automatically.',
-                      })}
-                    >
-                      <Field.Label>
-                        {formatMessage({
-                          id: getTranslation('notifications.email.template.label'),
-                          defaultMessage: 'Email template',
-                        })}
-                        {!emailTemplate && (
-                          <>
-                            {' '}
-                            <ProBadge tier="pro" />
-                          </>
-                        )}
-                      </Field.Label>
-                      <Textarea
-                        rows={6}
-                        value={notification.template || ''}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                          updateNotification(index, 'template', e.target.value || undefined)
-                        }
-                        placeholder={formatMessage({
-                          id: getTranslation('notifications.email.template.placeholder'),
-                          defaultMessage:
-                            'New submission for {{form.title}}\n\n{{data}}',
-                        })}
-                      />
-                      <Field.Hint />
-                    </Field.Root>
-                  </LockedSection>
-                </Box>
-
-                <Divider />
-
-                {/* Include Data Toggle */}
-                <Checkbox
-                  checked={notification.includeData !== false}
-                  onCheckedChange={(checked: boolean) =>
-                    updateNotification(index, 'includeData', checked)
-                  }
-                >
-                  {formatMessage({
-                    id: getTranslation('notifications.email.includeData.label'),
-                    defaultMessage: 'Include submission data',
-                  })}
-                </Checkbox>
-
-                {/* White-label (Pro): omit the FormFlow branding footer */}
-                <LockedSection
-                  can={emailWhiteLabel}
-                  feature="email.whiteLabel"
-                  mode="readonly"
-                >
-                  <Field.Root
-                    name={`notification-${notifId}-omitBranding`}
-                    hint={formatMessage({
-                      id: getTranslation('notifications.email.whiteLabel.hint'),
-                      defaultMessage:
-                        "Omit the 'Sent by FormFlow' line from the email footer (Pro feature).",
+                    {formatMessage({
+                      id: getTranslation('notifications.email.includeData.label'),
+                      defaultMessage: 'Include submission data',
                     })}
-                  >
-                    <Checkbox
-                      checked={!!notification.omitBranding}
-                      onCheckedChange={(checked: boolean) =>
-                        updateNotification(index, 'omitBranding', checked)
-                      }
+                  </Checkbox>
+
+                  {/* White-label (Pro): omit the FormFlow branding footer */}
+                  <Box>
+                    <LockedSection
+                      access={emailWhiteLabelAccess}
+                      feature="email.whiteLabel"
+                      mode="readonly"
+                    >
+                      {({ disabled }) => (
+                        <Field.Root
+                          name={`notification-${notifId}-omitBranding`}
+                          hint={
+                            emailWhiteLabelAccess === 'checking' ||
+                            emailWhiteLabelAccess === 'unavailable'
+                              ? undefined
+                              : formatMessage({
+                                  id: getTranslation('notifications.email.whiteLabel.hint'),
+                                  defaultMessage:
+                                    "Omit the 'Sent by FormFlow' line from the email footer (Pro feature).",
+                                })
+                          }
+                        >
+                          <Checkbox
+                            checked={!!notification.omitBranding}
+                            disabled={notificationDisabled || disabled}
+                            onCheckedChange={(checked: boolean) =>
+                              updateNotification(index, 'omitBranding', checked)
+                            }
+                          >
+                            {formatMessage({
+                              id: getTranslation('notifications.email.whiteLabel.label'),
+                              defaultMessage: 'Remove branding footer',
+                            })}
+                            {emailWhiteLabelAccess === 'unentitled' && (
+                              <>
+                                {' '}
+                                <ProBadge tier="pro" />
+                              </>
+                            )}
+                          </Checkbox>
+                          <Field.Hint />
+                        </Field.Root>
+                      )}
+                    </LockedSection>
+                    {!notificationDisabled &&
+                      notification.omitBranding &&
+                      emailWhiteLabelAccess !== 'entitled' && (
+                        <Box paddingTop={2}>
+                          <Button
+                            size="S"
+                            variant="tertiary"
+                            onClick={() => restoreBranding(index)}
+                            disabled={!emailWhiteLabelPolicy.canRemove}
+                          >
+                            {formatMessage({
+                              id: getTranslation('notifications.email.cleanup.restoreBranding'),
+                              defaultMessage: 'Restore branding footer',
+                            })}
+                          </Button>
+                        </Box>
+                      )}
+                  </Box>
+                </Flex>
+              </Box>
+            );
+
+            if (index === 0) {
+              return renderNotification(false);
+            }
+
+            return (
+              <Box
+                key={notifId}
+                role="group"
+                aria-describedby={
+                  emailAdvancedAccess === 'unentitled' ? additionalNotificationReasonId : undefined
+                }
+              >
+                {emailAdvancedAccess === 'unentitled' && (
+                  <Box paddingBottom={2}>
+                    <Typography
+                      id={additionalNotificationReasonId}
+                      variant="pi"
+                      textColor="neutral600"
                     >
                       {formatMessage({
-                        id: getTranslation('notifications.email.whiteLabel.label'),
-                        defaultMessage: 'Remove branding footer',
+                        id: getTranslation('notifications.email.additionalLockedReason'),
+                        defaultMessage:
+                          'Additional email notifications require Pro. Existing settings are read-only, but you can remove this notification.',
                       })}
-                      {!emailWhiteLabel && (
-                        <>
-                          {' '}
-                          <ProBadge tier="pro" />
-                        </>
-                      )}
-                    </Checkbox>
-                    <Field.Hint />
-                  </Field.Root>
+                    </Typography>
+                  </Box>
+                )}
+                <LockedSection
+                  access={emailAdvancedAccess}
+                  feature="email.advanced"
+                  mode="readonly"
+                >
+                  {({ disabled }) => renderNotification(disabled)}
                 </LockedSection>
-              </Flex>
-            </Box>
+                {emailAdvancedAccess !== 'entitled' && (
+                  <Box paddingTop={2}>
+                    <Button
+                      size="S"
+                      variant="danger-light"
+                      startIcon={<Trash />}
+                      onClick={() => removeLockedNotification(notifId, index)}
+                      disabled={!emailAdvancedPolicy.canRemove}
+                    >
+                      {formatMessage({
+                        id: getTranslation('notifications.email.remove'),
+                        defaultMessage: 'Remove notification',
+                      })}
+                    </Button>
+                  </Box>
+                )}
+              </Box>
             );
           })}
         </Flex>

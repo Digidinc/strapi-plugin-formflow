@@ -4,17 +4,14 @@ import { Button, Tooltip } from '@strapi/design-system';
 import { useIntl } from 'react-intl';
 
 import { FEATURE_TIER, type FeatureKey } from '../feature-map';
-import { useLicense } from '../hooks/useLicense';
-import { accessPresentation, resolveFeatureAccess, type FeatureAccess } from '../license-state';
+import { accessPresentation, type FeatureAccess } from '../license-state';
 
 export interface GatedButtonProps {
-  /** State-aware access. New callers should prefer this over the legacy `can` prop. */
-  access?: FeatureAccess;
-  /** Temporary boolean compatibility for callers awaiting the Task 10 migration. */
-  can?: boolean;
+  /** Explicit state-aware access for the gated feature. */
+  access: FeatureAccess;
   /** Tooltip text shown when locked. Defaults to "Upgrade to unlock". */
   lockedTooltip?: string;
-  /** Feature key used to resolve legacy access and the required tier. */
+  /** Feature key used to resolve the required tier. */
   feature: FeatureKey;
   /** Forwarded to the DS Button when entitled. */
   onClick?: () => void;
@@ -32,7 +29,6 @@ export interface GatedButtonProps {
  */
 export const GatedButton = ({
   access,
-  can,
   lockedTooltip,
   feature,
   onClick,
@@ -40,10 +36,7 @@ export const GatedButton = ({
   ...rest
 }: GatedButtonProps) => {
   const { formatMessage } = useIntl();
-  const { access: resolveAccess } = useLicense();
-  const contextAccess = resolveAccess(feature);
-  const resolvedAccess = resolveFeatureAccess(contextAccess, access, can);
-  const presentation = accessPresentation(resolvedAccess);
+  const presentation = accessPresentation(access);
 
   if (!presentation.disabled) {
     return (

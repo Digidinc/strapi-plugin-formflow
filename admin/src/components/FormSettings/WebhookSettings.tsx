@@ -24,7 +24,10 @@ import { API, WebhookConfig, WebhookEvent } from '../../utils/api';
 import { useLicense } from '../../ee/hooks/useLicense';
 import { GatedButton } from '../../ee/components/GatedButton';
 import { LockedSection } from '../../ee/components/LockedSection';
+import { LicenseStatusNotice } from '../../ee/components/LicenseStatusNotice';
 import { UpsellCard } from '../../ee/components/UpsellCard';
+import { premiumMutationPolicy } from '../../ee/license-state';
+import { refreshLicenseOnPaymentRequired } from '../../ee/payment-required';
 
 export interface WebhookSettingsProps {
   webhooks: WebhookConfig[];
@@ -181,8 +184,10 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
   const { formatMessage } = useIntl();
   const { post } = useFetchClient();
   const { toggleNotification } = useNotification();
-  const { can } = useLicense();
-  const entitled = can('webhooks');
+  const { access, refresh } = useLicense();
+  const webhooksAccess = access('webhooks');
+  const webhooksPolicy = premiumMutationPolicy(webhooksAccess);
+  const webhooksLockReasonId = 'formflow-webhooks-locked-reason';
   // Editor-local state keyed by the webhook's stable id (never by array index).
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [urlErrors, setUrlErrors] = useState<Record<string, string>>({});
@@ -191,14 +196,15 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
 
   // Normalise to records that always carry a stable id for keying.
   const items = useMemo<WebhookWithId[]>(() => withIds(webhooks), [webhooks]);
+  const canPersistWebhookIds = webhooksPolicy.canEdit;
 
-  // Persist generated ids back to the parent when existing records lack them.
+  // Keep generated keys editor-local until premium authoring access is
+  // confirmed; unresolved verification must not mutate premium configuration.
   useEffect(() => {
-    if (needsIds(webhooks)) {
+    if (needsIds(webhooks) && canPersistWebhookIds) {
       onChange(items);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [webhooks]);
+  }, [canPersistWebhookIds, items, onChange, webhooks]);
 
   const invalidUrlMessage = formatMessage({
     id: getTranslation('notifications.webhook.url.invalid'),
@@ -213,6 +219,7 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
   };
 
   const removeWebhook = (id: string, index: number) => {
+    if (!webhooksPolicy.canRemove) return;
     const updated = [...items];
     updated.splice(index, 1);
     onChange(updated);
@@ -266,12 +273,7 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
     setRows(id, index, [...getHeaderRows(id, index), { key: '', value: '' }]);
   };
 
-  const updateHeader = (
-    id: string,
-    index: number,
-    rowIndex: number,
-    patch: Partial<HeaderRow>
-  ) => {
+  const updateHeader = (id: string, index: number, rowIndex: number, patch: Partial<HeaderRow>) => {
     const rows = getHeaderRows(id, index).map((row, i) =>
       i === rowIndex ? { ...row, ...patch } : row
     );
@@ -319,16 +321,7 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
         }),
       });
     } catch (err) {
-      const fetchErr = err as {
-        status?: number;
-        response?: { status?: number; data?: { error?: { status?: number } } };
-      };
-      const status =
-        fetchErr?.response?.data?.error?.status ??
-        fetchErr?.response?.status ??
-        fetchErr?.status;
-
-      if (status === 402) {
+      if (await refreshLicenseOnPaymentRequired(err, refresh)) {
         toggleNotification({
           type: 'info',
           message: formatMessage({
@@ -370,7 +363,7 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
           </Box>
         </Box>
         <GatedButton
-          can={entitled}
+          access={webhooksAccess}
           feature="webhooks"
           size="S"
           startIcon={<Plus />}
@@ -383,10 +376,16 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
         </GatedButton>
       </Flex>
 
+      {items.length > 0 && (webhooksAccess === 'checking' || webhooksAccess === 'unavailable') && (
+        <LicenseStatusNotice compact />
+      )}
+
       {/* Empty State */}
       {items.length === 0 ? (
-        !entitled ? (
-          <UpsellCard feature="webhooks" />
+        webhooksAccess === 'checking' || webhooksAccess === 'unavailable' ? (
+          <LicenseStatusNotice compact />
+        ) : webhooksAccess === 'unentitled' ? (
+          <UpsellCard access={webhooksAccess} feature="webhooks" />
         ) : (
           <Box padding={6} background="neutral100" hasRadius>
             <Flex justifyContent="center">
@@ -400,333 +399,398 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
           </Box>
         )
       ) : (
-        <LockedSection can={entitled} feature="webhooks" mode="readonly">
-          <Flex direction="column" gap={4} alignItems="stretch">
-            {items.map((webhook, index) => {
-            const webhookId = webhook.id;
-            return (
-            <Box
-              key={webhookId}
-              padding={4}
-              background="neutral0"
-              hasRadius
-              shadow="tableShadow"
-              borderColor="neutral200"
-              borderStyle="solid"
-              borderWidth="1px"
-            >
-              {/* Webhook Header */}
-              <Flex justifyContent="space-between" alignItems="flex-start" marginBottom={4}>
-                <Checkbox
-                  checked={webhook.enabled}
-                  onCheckedChange={(checked: boolean) => updateWebhook(index, 'enabled', checked)}
-                >
-                  <Typography fontWeight="bold">
-                    {formatMessage(
-                      {
-                        id: getTranslation('notifications.webhook.itemTitle'),
-                        defaultMessage: 'Webhook #{number}',
-                      },
-                      { number: index + 1 }
-                    )}
-                    {!webhook.enabled && (
-                      <Typography tag="span" variant="pi" textColor="neutral500">
-                        {' '}
-                        {formatMessage({
-                          id: getTranslation('common.disabled'),
-                          defaultMessage: '(Disabled)',
-                        })}
-                      </Typography>
-                    )}
-                  </Typography>
-                </Checkbox>
-                <Flex gap={2} alignItems="center">
-                  <GatedButton
-                    can={entitled}
-                    feature="webhooks"
-                    size="S"
-                    variant="secondary"
-                    onClick={() => handleTestWebhook(index)}
-                  >
-                    {formatMessage({
-                      id: getTranslation('notifications.webhook.test'),
-                      defaultMessage: 'Test',
-                    })}
-                  </GatedButton>
-                  <IconButton
-                    label={formatMessage({
-                      id: getTranslation('notifications.webhook.remove'),
-                      defaultMessage: 'Remove webhook',
-                    })}
-                    onClick={() => removeWebhook(webhookId, index)}
-                    variant="ghost"
-                    withTooltip={false}
-                  >
-                    <Trash />
-                  </IconButton>
-                </Flex>
-              </Flex>
-
-              <Flex direction="column" gap={4} alignItems="stretch">
-                {/* URL and Method */}
-                <Flex gap={6} alignItems="flex-start">
-                  <Box width="14rem">
-                    <Field.Root name={`webhook-${webhookId}-method`}>
-                      <Field.Label>
-                        {formatMessage({
-                          id: getTranslation('notifications.webhook.method.label'),
-                          defaultMessage: 'Method',
-                        })}
-                      </Field.Label>
-                      <SingleSelect
-                        value={webhook.method}
-                        onChange={(value: string | number) =>
-                          updateWebhook(index, 'method', value as 'POST' | 'PUT')
-                        }
-                      >
-                        <SingleSelectOption value="POST">POST</SingleSelectOption>
-                        <SingleSelectOption value="PUT">PUT</SingleSelectOption>
-                      </SingleSelect>
-                    </Field.Root>
-                  </Box>
-                  <Box flex="1">
-                    <Field.Root name={`webhook-${webhookId}-url`} error={urlErrors[webhookId] || false}>
-                      <Field.Label>
-                        {formatMessage({
-                          id: getTranslation('notifications.webhook.url.label'),
-                          defaultMessage: 'URL',
-                        })}
-                      </Field.Label>
-                      <TextInput
-                        type="url"
-                        value={webhook.url}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          handleUrlChange(webhookId, index, e.target.value)
-                        }
-                        placeholder={formatMessage({
-                          id: getTranslation('notifications.webhook.url.placeholder'),
-                          defaultMessage: 'https://example.com/webhook',
-                        })}
-                      />
-                      <Field.Error />
-                    </Field.Root>
-                  </Box>
-                  <Box width="12rem">
-                    <Field.Root
-                      name={`webhook-${webhookId}-timeout`}
-                      hint={formatMessage(
-                        {
-                          id: getTranslation('notifications.webhook.timeout.hint'),
-                          defaultMessage: 'Between {min} and {max} seconds',
-                        },
-                        { min: MIN_TIMEOUT_SECONDS, max: MAX_TIMEOUT_SECONDS }
-                      )}
-                    >
-                      <Field.Label>
-                        {formatMessage({
-                          id: getTranslation('notifications.webhook.timeout.secondsLabel'),
-                          defaultMessage: 'Timeout (seconds)',
-                        })}
-                      </Field.Label>
-                      <NumberInput
-                        value={
-                          typeof webhook.timeout === 'number'
-                            ? Math.round(webhook.timeout / SECOND_MS)
-                            : DEFAULT_TIMEOUT_SECONDS
-                        }
-                        onValueChange={(value: number | undefined) => {
-                          if (value === undefined) {
-                            updateWebhook(index, 'timeout', undefined);
-                            return;
-                          }
-                          const clamped = Math.min(
-                            MAX_TIMEOUT_SECONDS,
-                            Math.max(MIN_TIMEOUT_SECONDS, Math.round(value))
-                          );
-                          updateWebhook(index, 'timeout', clamped * SECOND_MS);
-                        }}
-                        min={MIN_TIMEOUT_SECONDS}
-                        max={MAX_TIMEOUT_SECONDS}
-                        step={1}
-                      />
-                      <Field.Hint />
-                    </Field.Root>
-                  </Box>
-                </Flex>
-
-                {/* Events */}
-                <Box>
-                  <Box marginBottom={2}>
-                    <Typography variant="sigma" textColor="neutral600">
-                      {formatMessage({
-                        id: getTranslation('notifications.webhook.events.label'),
-                        defaultMessage: 'Events',
-                      })}
-                    </Typography>
-                  </Box>
-                  <Flex direction="column" gap={2} alignItems="stretch">
-                    {AVAILABLE_EVENTS.map((event) => (
-                      <Checkbox
-                        key={event.value}
-                        checked={webhook.events?.includes(event.value)}
-                        onCheckedChange={() => toggleEvent(index, event.value)}
-                        disabled={
-                          webhook.events?.length === 1 && webhook.events.includes(event.value)
-                        }
-                      >
-                        {formatMessage({
-                          id: getTranslation(event.labelId),
-                          defaultMessage: event.defaultLabel,
-                        })}
-                      </Checkbox>
-                    ))}
-                  </Flex>
-                </Box>
-
-                <Divider />
-
-                {/* Custom Headers */}
-                <Box>
-                  <Flex justifyContent="space-between" alignItems="center" marginBottom={2}>
-                    <Typography variant="sigma" textColor="neutral600">
-                      {formatMessage({
-                        id: getTranslation('notifications.webhook.headers.label'),
-                        defaultMessage: 'Headers',
-                      })}
-                    </Typography>
-                    <Button
-                      size="S"
-                      variant="secondary"
-                      startIcon={<Plus />}
-                      onClick={() => addHeader(webhookId, index)}
-                    >
-                      {formatMessage({
-                        id: getTranslation('notifications.webhook.headers.add'),
-                        defaultMessage: 'Add header',
-                      })}
-                    </Button>
-                  </Flex>
-                  <Flex direction="column" gap={2} alignItems="stretch">
-                    {getHeaderRows(webhookId, index).map((row, rowIndex) => (
-                      <Flex key={rowIndex} gap={2} alignItems="flex-start">
-                        <Box flex="1">
-                          <Field.Root name={`webhook-${webhookId}-header-key-${rowIndex}`}>
-                            <TextInput
-                              aria-label={formatMessage({
-                                id: getTranslation('notifications.webhook.headers.key'),
-                                defaultMessage: 'Header name',
-                              })}
-                              placeholder={formatMessage({
-                                id: getTranslation('notifications.webhook.headers.key'),
-                                defaultMessage: 'Header name',
-                              })}
-                              value={row.key}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                updateHeader(webhookId, index, rowIndex, { key: e.target.value })
-                              }
-                            />
-                          </Field.Root>
-                        </Box>
-                        <Box flex="1">
-                          <Field.Root name={`webhook-${webhookId}-header-value-${rowIndex}`}>
-                            <TextInput
-                              aria-label={formatMessage({
-                                id: getTranslation('notifications.webhook.headers.value'),
-                                defaultMessage: 'Header value',
-                              })}
-                              placeholder={formatMessage({
-                                id: getTranslation('notifications.webhook.headers.value'),
-                                defaultMessage: 'Header value',
-                              })}
-                              value={row.value}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                updateHeader(webhookId, index, rowIndex, { value: e.target.value })
-                              }
-                            />
-                          </Field.Root>
-                        </Box>
-                        <IconButton
-                          label={formatMessage({
-                            id: getTranslation('notifications.webhook.headers.remove'),
-                            defaultMessage: 'Remove header',
-                          })}
-                          onClick={() => removeHeader(webhookId, index, rowIndex)}
-                          variant="ghost"
-                          withTooltip={false}
-                        >
-                          <Trash />
-                        </IconButton>
-                      </Flex>
-                    ))}
-                  </Flex>
-                </Box>
-
-                <Divider />
-
-                {/* Secret */}
-                <Field.Root
-                  name={`webhook-${webhookId}-secret`}
-                  hint={formatMessage({
-                    id: getTranslation('notifications.webhook.secret.hint'),
-                    defaultMessage:
-                      'If provided, requests include an X-Webhook-Signature header for verification',
-                  })}
-                >
-                  <Field.Label>
-                    {formatMessage({
-                      id: getTranslation('notifications.webhook.secret.label'),
-                      defaultMessage: 'Secret',
-                    })}
-                  </Field.Label>
-                  <Flex gap={2} alignItems="flex-start">
-                    <Box flex="1">
-                      <TextInput
-                        type={showSecrets[webhookId] ? 'text' : 'password'}
-                        value={webhook.secret || ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          updateWebhook(index, 'secret', e.target.value || undefined)
-                        }
-                        placeholder={formatMessage({
-                          id: getTranslation('notifications.webhook.secret.placeholder'),
-                          defaultMessage: 'Secret key for HMAC signature',
-                        })}
-                        autoComplete="new-password"
-                      />
-                    </Box>
-                    <IconButton
-                      label={formatMessage({
-                        id: getTranslation('notifications.webhook.secret.toggle'),
-                        defaultMessage: 'Toggle secret visibility',
-                      })}
-                      onClick={() => toggleSecretVisibility(webhookId)}
-                      variant="tertiary"
-                    >
-                      {showSecrets[webhookId] ? <EyeStriked /> : <Eye />}
-                    </IconButton>
-                  </Flex>
-                  <Field.Hint />
-                </Field.Root>
-
-                <Divider />
-
-                {/* Include Data Toggle */}
-                <Checkbox
-                  checked={webhook.includeFormData !== false}
-                  onCheckedChange={(checked: boolean) =>
-                    updateWebhook(index, 'includeFormData', checked)
-                  }
-                >
-                  {formatMessage({
-                    id: getTranslation('notifications.webhook.includeFormData.label'),
-                    defaultMessage: 'Include form data',
-                  })}
-                </Checkbox>
-              </Flex>
+        <Box
+          role="group"
+          aria-describedby={webhooksAccess === 'unentitled' ? webhooksLockReasonId : undefined}
+        >
+          {webhooksAccess === 'unentitled' && (
+            <Box paddingBottom={2}>
+              <Typography id={webhooksLockReasonId} variant="pi" textColor="neutral600">
+                {formatMessage({
+                  id: getTranslation('notifications.webhook.lockedReason'),
+                  defaultMessage:
+                    'Webhooks require Pro. Existing settings are read-only, but you can remove them.',
+                })}
+              </Typography>
             </Box>
-            );
-          })}
-          </Flex>
-        </LockedSection>
+          )}
+          <LockedSection access={webhooksAccess} feature="webhooks" mode="readonly">
+            {({ disabled }) => (
+              <Flex direction="column" gap={4} alignItems="stretch">
+                {items.map((webhook, index) => {
+                  const webhookId = webhook.id;
+                  return (
+                    <Box
+                      key={webhookId}
+                      padding={4}
+                      background="neutral0"
+                      hasRadius
+                      shadow="tableShadow"
+                      borderColor="neutral200"
+                      borderStyle="solid"
+                      borderWidth="1px"
+                    >
+                      {/* Webhook Header */}
+                      <Flex justifyContent="space-between" alignItems="flex-start" marginBottom={4}>
+                        <Checkbox
+                          checked={webhook.enabled}
+                          disabled={disabled}
+                          onCheckedChange={(checked: boolean) =>
+                            updateWebhook(index, 'enabled', checked)
+                          }
+                        >
+                          <Typography fontWeight="bold">
+                            {formatMessage(
+                              {
+                                id: getTranslation('notifications.webhook.itemTitle'),
+                                defaultMessage: 'Webhook #{number}',
+                              },
+                              { number: index + 1 }
+                            )}
+                            {!webhook.enabled && (
+                              <Typography tag="span" variant="pi" textColor="neutral500">
+                                {' '}
+                                {formatMessage({
+                                  id: getTranslation('common.disabled'),
+                                  defaultMessage: '(Disabled)',
+                                })}
+                              </Typography>
+                            )}
+                          </Typography>
+                        </Checkbox>
+                        <Flex gap={2} alignItems="center">
+                          <GatedButton
+                            access={webhooksAccess}
+                            feature="webhooks"
+                            size="S"
+                            variant="secondary"
+                            onClick={() => handleTestWebhook(index)}
+                          >
+                            {formatMessage({
+                              id: getTranslation('notifications.webhook.test'),
+                              defaultMessage: 'Test',
+                            })}
+                          </GatedButton>
+                          <IconButton
+                            label={formatMessage({
+                              id: getTranslation('notifications.webhook.remove'),
+                              defaultMessage: 'Remove webhook',
+                            })}
+                            onClick={() => removeWebhook(webhookId, index)}
+                            disabled={disabled}
+                            variant="ghost"
+                            withTooltip={false}
+                          >
+                            <Trash />
+                          </IconButton>
+                        </Flex>
+                      </Flex>
+
+                      <Flex direction="column" gap={4} alignItems="stretch">
+                        {/* URL and Method */}
+                        <Flex gap={6} alignItems="flex-start">
+                          <Box width="14rem">
+                            <Field.Root name={`webhook-${webhookId}-method`}>
+                              <Field.Label>
+                                {formatMessage({
+                                  id: getTranslation('notifications.webhook.method.label'),
+                                  defaultMessage: 'Method',
+                                })}
+                              </Field.Label>
+                              <SingleSelect
+                                value={webhook.method}
+                                disabled={disabled}
+                                onChange={(value: string | number) =>
+                                  updateWebhook(index, 'method', value as 'POST' | 'PUT')
+                                }
+                              >
+                                <SingleSelectOption value="POST">POST</SingleSelectOption>
+                                <SingleSelectOption value="PUT">PUT</SingleSelectOption>
+                              </SingleSelect>
+                            </Field.Root>
+                          </Box>
+                          <Box flex="1">
+                            <Field.Root
+                              name={`webhook-${webhookId}-url`}
+                              error={urlErrors[webhookId] || false}
+                            >
+                              <Field.Label>
+                                {formatMessage({
+                                  id: getTranslation('notifications.webhook.url.label'),
+                                  defaultMessage: 'URL',
+                                })}
+                              </Field.Label>
+                              <TextInput
+                                type="url"
+                                value={webhook.url}
+                                readOnly={disabled}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                  handleUrlChange(webhookId, index, e.target.value)
+                                }
+                                placeholder={formatMessage({
+                                  id: getTranslation('notifications.webhook.url.placeholder'),
+                                  defaultMessage: 'https://example.com/webhook',
+                                })}
+                              />
+                              <Field.Error />
+                            </Field.Root>
+                          </Box>
+                          <Box width="12rem">
+                            <Field.Root
+                              name={`webhook-${webhookId}-timeout`}
+                              hint={formatMessage(
+                                {
+                                  id: getTranslation('notifications.webhook.timeout.hint'),
+                                  defaultMessage: 'Between {min} and {max} seconds',
+                                },
+                                { min: MIN_TIMEOUT_SECONDS, max: MAX_TIMEOUT_SECONDS }
+                              )}
+                            >
+                              <Field.Label>
+                                {formatMessage({
+                                  id: getTranslation('notifications.webhook.timeout.secondsLabel'),
+                                  defaultMessage: 'Timeout (seconds)',
+                                })}
+                              </Field.Label>
+                              <NumberInput
+                                value={
+                                  typeof webhook.timeout === 'number'
+                                    ? Math.round(webhook.timeout / SECOND_MS)
+                                    : DEFAULT_TIMEOUT_SECONDS
+                                }
+                                onValueChange={(value: number | undefined) => {
+                                  if (value === undefined) {
+                                    updateWebhook(index, 'timeout', undefined);
+                                    return;
+                                  }
+                                  const clamped = Math.min(
+                                    MAX_TIMEOUT_SECONDS,
+                                    Math.max(MIN_TIMEOUT_SECONDS, Math.round(value))
+                                  );
+                                  updateWebhook(index, 'timeout', clamped * SECOND_MS);
+                                }}
+                                disabled={disabled}
+                                min={MIN_TIMEOUT_SECONDS}
+                                max={MAX_TIMEOUT_SECONDS}
+                                step={1}
+                              />
+                              <Field.Hint />
+                            </Field.Root>
+                          </Box>
+                        </Flex>
+
+                        {/* Events */}
+                        <Box>
+                          <Box marginBottom={2}>
+                            <Typography variant="sigma" textColor="neutral600">
+                              {formatMessage({
+                                id: getTranslation('notifications.webhook.events.label'),
+                                defaultMessage: 'Events',
+                              })}
+                            </Typography>
+                          </Box>
+                          <Flex direction="column" gap={2} alignItems="stretch">
+                            {AVAILABLE_EVENTS.map((event) => (
+                              <Checkbox
+                                key={event.value}
+                                checked={webhook.events?.includes(event.value)}
+                                onCheckedChange={() => toggleEvent(index, event.value)}
+                                disabled={
+                                  disabled ||
+                                  (webhook.events?.length === 1 &&
+                                    webhook.events.includes(event.value))
+                                }
+                              >
+                                {formatMessage({
+                                  id: getTranslation(event.labelId),
+                                  defaultMessage: event.defaultLabel,
+                                })}
+                              </Checkbox>
+                            ))}
+                          </Flex>
+                        </Box>
+
+                        <Divider />
+
+                        {/* Custom Headers */}
+                        <Box>
+                          <Flex justifyContent="space-between" alignItems="center" marginBottom={2}>
+                            <Typography variant="sigma" textColor="neutral600">
+                              {formatMessage({
+                                id: getTranslation('notifications.webhook.headers.label'),
+                                defaultMessage: 'Headers',
+                              })}
+                            </Typography>
+                            <Button
+                              size="S"
+                              variant="secondary"
+                              startIcon={<Plus />}
+                              onClick={() => addHeader(webhookId, index)}
+                              disabled={disabled}
+                            >
+                              {formatMessage({
+                                id: getTranslation('notifications.webhook.headers.add'),
+                                defaultMessage: 'Add header',
+                              })}
+                            </Button>
+                          </Flex>
+                          <Flex direction="column" gap={2} alignItems="stretch">
+                            {getHeaderRows(webhookId, index).map((row, rowIndex) => (
+                              <Flex key={rowIndex} gap={2} alignItems="flex-start">
+                                <Box flex="1">
+                                  <Field.Root name={`webhook-${webhookId}-header-key-${rowIndex}`}>
+                                    <TextInput
+                                      aria-label={formatMessage({
+                                        id: getTranslation('notifications.webhook.headers.key'),
+                                        defaultMessage: 'Header name',
+                                      })}
+                                      placeholder={formatMessage({
+                                        id: getTranslation('notifications.webhook.headers.key'),
+                                        defaultMessage: 'Header name',
+                                      })}
+                                      value={row.key}
+                                      readOnly={disabled}
+                                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                        updateHeader(webhookId, index, rowIndex, {
+                                          key: e.target.value,
+                                        })
+                                      }
+                                    />
+                                  </Field.Root>
+                                </Box>
+                                <Box flex="1">
+                                  <Field.Root
+                                    name={`webhook-${webhookId}-header-value-${rowIndex}`}
+                                  >
+                                    <TextInput
+                                      aria-label={formatMessage({
+                                        id: getTranslation('notifications.webhook.headers.value'),
+                                        defaultMessage: 'Header value',
+                                      })}
+                                      placeholder={formatMessage({
+                                        id: getTranslation('notifications.webhook.headers.value'),
+                                        defaultMessage: 'Header value',
+                                      })}
+                                      value={row.value}
+                                      readOnly={disabled}
+                                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                        updateHeader(webhookId, index, rowIndex, {
+                                          value: e.target.value,
+                                        })
+                                      }
+                                    />
+                                  </Field.Root>
+                                </Box>
+                                <IconButton
+                                  label={formatMessage({
+                                    id: getTranslation('notifications.webhook.headers.remove'),
+                                    defaultMessage: 'Remove header',
+                                  })}
+                                  onClick={() => removeHeader(webhookId, index, rowIndex)}
+                                  disabled={disabled}
+                                  variant="ghost"
+                                  withTooltip={false}
+                                >
+                                  <Trash />
+                                </IconButton>
+                              </Flex>
+                            ))}
+                          </Flex>
+                        </Box>
+
+                        <Divider />
+
+                        {/* Secret */}
+                        <Field.Root
+                          name={`webhook-${webhookId}-secret`}
+                          hint={formatMessage({
+                            id: getTranslation('notifications.webhook.secret.hint'),
+                            defaultMessage:
+                              'If provided, requests include an X-Webhook-Signature header for verification',
+                          })}
+                        >
+                          <Field.Label>
+                            {formatMessage({
+                              id: getTranslation('notifications.webhook.secret.label'),
+                              defaultMessage: 'Secret',
+                            })}
+                          </Field.Label>
+                          <Flex gap={2} alignItems="flex-start">
+                            <Box flex="1">
+                              <TextInput
+                                type={showSecrets[webhookId] ? 'text' : 'password'}
+                                value={webhook.secret || ''}
+                                readOnly={disabled}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                  updateWebhook(index, 'secret', e.target.value || undefined)
+                                }
+                                placeholder={formatMessage({
+                                  id: getTranslation('notifications.webhook.secret.placeholder'),
+                                  defaultMessage: 'Secret key for HMAC signature',
+                                })}
+                                autoComplete="new-password"
+                              />
+                            </Box>
+                            <IconButton
+                              label={formatMessage({
+                                id: getTranslation('notifications.webhook.secret.toggle'),
+                                defaultMessage: 'Toggle secret visibility',
+                              })}
+                              onClick={() => toggleSecretVisibility(webhookId)}
+                              disabled={disabled}
+                              variant="tertiary"
+                            >
+                              {showSecrets[webhookId] ? <EyeStriked /> : <Eye />}
+                            </IconButton>
+                          </Flex>
+                          <Field.Hint />
+                        </Field.Root>
+
+                        <Divider />
+
+                        {/* Include Data Toggle */}
+                        <Checkbox
+                          checked={webhook.includeFormData !== false}
+                          disabled={disabled}
+                          onCheckedChange={(checked: boolean) =>
+                            updateWebhook(index, 'includeFormData', checked)
+                          }
+                        >
+                          {formatMessage({
+                            id: getTranslation('notifications.webhook.includeFormData.label'),
+                            defaultMessage: 'Include form data',
+                          })}
+                        </Checkbox>
+                      </Flex>
+                    </Box>
+                  );
+                })}
+              </Flex>
+            )}
+          </LockedSection>
+          {webhooksAccess !== 'entitled' && (
+            <Flex direction="column" gap={2} alignItems="flex-start" paddingTop={2}>
+              {items.map((webhook, index) => (
+                <Button
+                  key={`remove-${webhook.id}`}
+                  size="S"
+                  variant="danger-light"
+                  startIcon={<Trash />}
+                  onClick={() => removeWebhook(webhook.id, index)}
+                  disabled={!webhooksPolicy.canRemove}
+                >
+                  {formatMessage(
+                    {
+                      id: getTranslation('notifications.webhook.removeNumbered'),
+                      defaultMessage: 'Remove webhook #{number}',
+                    },
+                    { number: index + 1 }
+                  )}
+                </Button>
+              ))}
+            </Flex>
+          )}
+        </Box>
       )}
 
       {/* Example Payload */}

@@ -24,7 +24,9 @@ import type {
 } from '../../utils/api';
 import { useLicense } from '../../ee/hooks/useLicense';
 import { LockedSection } from '../../ee/components/LockedSection';
+import { LicenseStatusNotice } from '../../ee/components/LicenseStatusNotice';
 import { ProBadge } from '../../ee/components/ProBadge';
+import { premiumMutationPolicy } from '../../ee/license-state';
 
 export interface SpamSettingsProps {
   spam: SpamSettingsType;
@@ -67,11 +69,21 @@ const textToIps = (text: string): string[] =>
  */
 export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
   const { formatMessage } = useIntl();
-  const { can } = useLicense();
-  const v3Entitled = can('spam.recaptchaV3');
-  const turnstileEntitled = can('spam.turnstile');
-  const hcaptchaEntitled = can('spam.hcaptcha');
-  const ipBlocklistEntitled = can('spam.ipBlocklist');
+  const { access } = useLicense();
+  const recaptchaV3Access = access('spam.recaptchaV3');
+  const turnstileAccess = access('spam.turnstile');
+  const hcaptchaAccess = access('spam.hcaptcha');
+  const ipBlocklistAccess = access('spam.ipBlocklist');
+  const recaptchaV3Policy = premiumMutationPolicy(recaptchaV3Access);
+  const turnstilePolicy = premiumMutationPolicy(turnstileAccess);
+  const hcaptchaPolicy = premiumMutationPolicy(hcaptchaAccess);
+  const ipBlocklistPolicy = premiumMutationPolicy(ipBlocklistAccess);
+  const hasUnknownPremiumAccess = [
+    recaptchaV3Access,
+    turnstileAccess,
+    hcaptchaAccess,
+    ipBlocklistAccess,
+  ].some((featureAccess) => featureAccess === 'checking' || featureAccess === 'unavailable');
 
   const updateSpam = useCallback(
     <K extends keyof SpamSettingsType>(key: K, value: SpamSettingsType[K]) => {
@@ -81,6 +93,7 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
   );
 
   const recaptcha = spam.recaptcha ?? getDefaultRecaptcha();
+  const recaptchaV3Locked = recaptcha.version === 'v3' && recaptchaV3Access !== 'entitled';
 
   const updateRecaptcha = useCallback(
     <K extends keyof RecaptchaConfig>(key: K, value: RecaptchaConfig[K]) => {
@@ -88,6 +101,21 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
     },
     [spam, recaptcha, onChange]
   );
+
+  const handleRecaptchaEnabledChange = (checked: boolean) => {
+    if (recaptcha.version === 'v3') {
+      const allowed = checked ? recaptchaV3Policy.canEdit : recaptchaV3Policy.canRemove;
+      if (!allowed) return;
+    }
+    updateRecaptcha('enabled', checked);
+  };
+
+  const handleRecaptchaVersionChange = (value: string | number) => {
+    const version = value as RecaptchaConfig['version'];
+    if (version === 'v2' && !recaptchaV3Policy.canRemove) return;
+    if (version === 'v3' && !recaptchaV3Policy.canEdit) return;
+    updateRecaptcha('version', version);
+  };
 
   const turnstile = spam.turnstile ?? getDefaultTurnstile();
 
@@ -98,6 +126,12 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
     [spam, turnstile, onChange]
   );
 
+  const handleTurnstileEnabledChange = (checked: boolean) => {
+    const allowed = checked ? turnstilePolicy.canEdit : turnstilePolicy.canRemove;
+    if (!allowed) return;
+    updateTurnstile('enabled', checked);
+  };
+
   const hcaptcha = spam.hcaptcha ?? getDefaultHcaptcha();
 
   const updateHcaptcha = useCallback(
@@ -107,7 +141,14 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
     [spam, hcaptcha, onChange]
   );
 
+  const handleHcaptchaEnabledChange = (checked: boolean) => {
+    const allowed = checked ? hcaptchaPolicy.canEdit : hcaptchaPolicy.canRemove;
+    if (!allowed) return;
+    updateHcaptcha('enabled', checked);
+  };
+
   const ipBlocklist = spam.ipBlocklist ?? getDefaultIpBlocklist();
+  const ipBlocklistEnabled = spam.ipBlocklist !== undefined;
 
   const updateIpBlocklist = useCallback(
     <K extends keyof IpBlocklistConfig>(key: K, value: IpBlocklistConfig[K]) => {
@@ -116,8 +157,16 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
     [spam, ipBlocklist, onChange]
   );
 
+  const handleIpBlocklistEnabledChange = (checked: boolean) => {
+    const allowed = checked ? ipBlocklistPolicy.canEdit : ipBlocklistPolicy.canRemove;
+    if (!allowed) return;
+    updateSpam('ipBlocklist', checked ? getDefaultIpBlocklist() : undefined);
+  };
+
   return (
     <Flex direction="column" gap={4} alignItems="stretch">
+      {hasUnknownPremiumAccess && <LicenseStatusNotice compact />}
+
       {/* Honeypot */}
       <Flex direction="column" gap={1} alignItems="stretch">
         <Checkbox
@@ -168,7 +217,11 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
       <Flex direction="column" gap={1} alignItems="stretch">
         <Checkbox
           checked={recaptcha.enabled}
-          onCheckedChange={(checked: boolean) => updateRecaptcha('enabled', checked)}
+          disabled={
+            recaptcha.version === 'v3' &&
+            (recaptcha.enabled ? !recaptchaV3Policy.canRemove : !recaptchaV3Policy.canEdit)
+          }
+          onCheckedChange={handleRecaptchaEnabledChange}
         >
           {formatMessage({
             id: getTranslation('settings.spam.recaptcha.enable'),
@@ -183,7 +236,7 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
         </Typography>
       </Flex>
 
-      {recaptcha.enabled && (
+      {(recaptcha.enabled || recaptcha.version === 'v3') && (
         <Box
           padding={4}
           background="neutral100"
@@ -203,9 +256,8 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
                 </Field.Label>
                 <SingleSelect
                   value={recaptcha.version}
-                  onChange={(value: string | number) =>
-                    updateRecaptcha('version', value as 'v2' | 'v3')
-                  }
+                  disabled={recaptcha.version === 'v3' && !recaptchaV3Policy.canRemove}
+                  onChange={handleRecaptchaVersionChange}
                 >
                   <SingleSelectOption value="v2">
                     {formatMessage({
@@ -213,12 +265,12 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
                       defaultMessage: 'v2',
                     })}
                   </SingleSelectOption>
-                  <SingleSelectOption value="v3">
+                  <SingleSelectOption value="v3" disabled={!recaptchaV3Policy.canEdit}>
                     {formatMessage({
                       id: getTranslation('settings.spam.recaptcha.version.v3'),
                       defaultMessage: 'v3',
                     })}
-                    {!v3Entitled && (
+                    {recaptchaV3Access === 'unentitled' && (
                       <>
                         {' '}
                         <ProBadge tier="pro" />
@@ -230,33 +282,36 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
             </Grid.Item>
 
             {recaptcha.version === 'v3' && (
-              <LockedSection can={v3Entitled} feature="spam.recaptchaV3" mode="readonly">
-                <Grid.Item col={6} xs={12} direction="column" alignItems="stretch">
-                  <Field.Root
-                    name="recaptchaThreshold"
-                    hint={formatMessage({
-                      id: getTranslation('settings.spam.recaptcha.threshold.hint'),
-                      defaultMessage: 'Minimum score (0.0 - 1.0) required to accept a submission',
-                    })}
-                  >
-                    <Field.Label>
-                      {formatMessage({
-                        id: getTranslation('settings.spam.recaptcha.threshold.label'),
-                        defaultMessage: 'Threshold (v3)',
+              <LockedSection access={recaptchaV3Access} feature="spam.recaptchaV3" mode="readonly">
+                {({ disabled }) => (
+                  <Grid.Item col={6} xs={12} direction="column" alignItems="stretch">
+                    <Field.Root
+                      name="recaptchaThreshold"
+                      hint={formatMessage({
+                        id: getTranslation('settings.spam.recaptcha.threshold.hint'),
+                        defaultMessage: 'Minimum score (0.0 - 1.0) required to accept a submission',
                       })}
-                    </Field.Label>
-                    <NumberInput
-                      value={recaptcha.threshold ?? 0.5}
-                      onValueChange={(value: number | undefined) =>
-                        updateRecaptcha('threshold', value ?? 0.5)
-                      }
-                      step={0.1}
-                      min={0}
-                      max={1}
-                    />
-                    <Field.Hint />
-                  </Field.Root>
-                </Grid.Item>
+                    >
+                      <Field.Label>
+                        {formatMessage({
+                          id: getTranslation('settings.spam.recaptcha.threshold.label'),
+                          defaultMessage: 'Threshold (v3)',
+                        })}
+                      </Field.Label>
+                      <NumberInput
+                        value={recaptcha.threshold ?? 0.5}
+                        onValueChange={(value: number | undefined) =>
+                          updateRecaptcha('threshold', value ?? 0.5)
+                        }
+                        disabled={disabled}
+                        step={0.1}
+                        min={0}
+                        max={1}
+                      />
+                      <Field.Hint />
+                    </Field.Root>
+                  </Grid.Item>
+                )}
               </LockedSection>
             )}
 
@@ -276,6 +331,7 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
                 </Field.Label>
                 <TextInput
                   value={recaptcha.siteKey}
+                  readOnly={recaptchaV3Locked}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                     updateRecaptcha('siteKey', e.target.value)
                   }
@@ -303,6 +359,7 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
                 <TextInput
                   type="password"
                   value={recaptcha.secretKey}
+                  readOnly={recaptchaV3Locked}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                     updateRecaptcha('secretKey', e.target.value)
                   }
@@ -320,90 +377,95 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
       <Flex direction="column" gap={1} alignItems="stretch">
         <Flex gap={2} alignItems="center">
           <Checkbox
-            disabled={!turnstileEntitled}
+            disabled={turnstile.enabled ? !turnstilePolicy.canRemove : !turnstilePolicy.canEdit}
             checked={turnstile.enabled}
-            onCheckedChange={(checked: boolean) => updateTurnstile('enabled', checked)}
+            onCheckedChange={handleTurnstileEnabledChange}
           >
             {formatMessage({
               id: getTranslation('settings.spam.turnstile.enable'),
               defaultMessage: 'Enable Cloudflare Turnstile',
             })}
           </Checkbox>
-          {!turnstileEntitled && <ProBadge feature="spam.turnstile" />}
+          {turnstileAccess === 'unentitled' && <ProBadge feature="spam.turnstile" />}
         </Flex>
-        <Typography variant="pi" textColor="neutral600">
-          {formatMessage({
-            id: getTranslation('settings.spam.turnstile.hint'),
-            defaultMessage:
-              'Protect this form with Cloudflare Turnstile bot verification (Pro)',
-          })}
-        </Typography>
+        {(turnstileAccess === 'entitled' || turnstileAccess === 'unentitled') && (
+          <Typography variant="pi" textColor="neutral600">
+            {formatMessage({
+              id: getTranslation('settings.spam.turnstile.hint'),
+              defaultMessage: 'Protect this form with Cloudflare Turnstile bot verification (Pro)',
+            })}
+          </Typography>
+        )}
       </Flex>
 
       {turnstile.enabled && (
-        <LockedSection can={turnstileEntitled} feature="spam.turnstile" mode="readonly">
-          <Box
-            padding={4}
-            background="neutral100"
-            hasRadius
-            borderColor="neutral200"
-            borderStyle="solid"
-            borderWidth="1px"
-          >
-            <Grid.Root gap={4} gridCols={12}>
-              <Grid.Item col={6} xs={12} direction="column" alignItems="stretch">
-                <Field.Root
-                  name="turnstileSiteKey"
-                  hint={formatMessage({
-                    id: getTranslation('settings.spam.turnstile.siteKey.hint'),
-                    defaultMessage: 'Public key embedded in the form on the frontend',
-                  })}
-                >
-                  <Field.Label>
-                    {formatMessage({
-                      id: getTranslation('settings.spam.turnstile.siteKey.label'),
-                      defaultMessage: 'Site Key',
+        <LockedSection access={turnstileAccess} feature="spam.turnstile" mode="readonly">
+          {({ disabled }) => (
+            <Box
+              padding={4}
+              background="neutral100"
+              hasRadius
+              borderColor="neutral200"
+              borderStyle="solid"
+              borderWidth="1px"
+            >
+              <Grid.Root gap={4} gridCols={12}>
+                <Grid.Item col={6} xs={12} direction="column" alignItems="stretch">
+                  <Field.Root
+                    name="turnstileSiteKey"
+                    hint={formatMessage({
+                      id: getTranslation('settings.spam.turnstile.siteKey.hint'),
+                      defaultMessage: 'Public key embedded in the form on the frontend',
                     })}
-                  </Field.Label>
-                  <TextInput
-                    value={turnstile.siteKey ?? ''}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      updateTurnstile('siteKey', e.target.value)
-                    }
-                    placeholder="0x4AAA..."
-                  />
-                  <Field.Hint />
-                </Field.Root>
-              </Grid.Item>
+                  >
+                    <Field.Label>
+                      {formatMessage({
+                        id: getTranslation('settings.spam.turnstile.siteKey.label'),
+                        defaultMessage: 'Site Key',
+                      })}
+                    </Field.Label>
+                    <TextInput
+                      value={turnstile.siteKey ?? ''}
+                      readOnly={disabled}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        updateTurnstile('siteKey', e.target.value)
+                      }
+                      placeholder="0x4AAA..."
+                    />
+                    <Field.Hint />
+                  </Field.Root>
+                </Grid.Item>
 
-              <Grid.Item col={6} xs={12} direction="column" alignItems="stretch">
-                <Field.Root
-                  name="turnstileSecretKey"
-                  hint={formatMessage({
-                    id: getTranslation('settings.spam.turnstile.secretKey.hint'),
-                    defaultMessage: 'Stored server-side; used to verify tokens with Cloudflare',
-                  })}
-                >
-                  <Field.Label>
-                    {formatMessage({
-                      id: getTranslation('settings.spam.turnstile.secretKey.label'),
-                      defaultMessage: 'Secret Key',
+                <Grid.Item col={6} xs={12} direction="column" alignItems="stretch">
+                  <Field.Root
+                    name="turnstileSecretKey"
+                    hint={formatMessage({
+                      id: getTranslation('settings.spam.turnstile.secretKey.hint'),
+                      defaultMessage: 'Stored server-side; used to verify tokens with Cloudflare',
                     })}
-                  </Field.Label>
-                  <TextInput
-                    type="password"
-                    value={turnstile.secretKey ?? ''}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      updateTurnstile('secretKey', e.target.value)
-                    }
-                    placeholder="0x4AAA..."
-                    autoComplete="new-password"
-                  />
-                  <Field.Hint />
-                </Field.Root>
-              </Grid.Item>
-            </Grid.Root>
-          </Box>
+                  >
+                    <Field.Label>
+                      {formatMessage({
+                        id: getTranslation('settings.spam.turnstile.secretKey.label'),
+                        defaultMessage: 'Secret Key',
+                      })}
+                    </Field.Label>
+                    <TextInput
+                      type="password"
+                      value={turnstile.secretKey ?? ''}
+                      readOnly={disabled}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        updateTurnstile('secretKey', e.target.value)
+                      }
+                      placeholder="0x4AAA..."
+                      autoComplete="new-password"
+                    />
+                    <Field.Hint />
+                  </Field.Root>
+                </Grid.Item>
+              </Grid.Root>
+            </Box>
+          )}
         </LockedSection>
       )}
 
@@ -411,89 +473,95 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
       <Flex direction="column" gap={1} alignItems="stretch">
         <Flex gap={2} alignItems="center">
           <Checkbox
-            disabled={!hcaptchaEntitled}
+            disabled={hcaptcha.enabled ? !hcaptchaPolicy.canRemove : !hcaptchaPolicy.canEdit}
             checked={hcaptcha.enabled}
-            onCheckedChange={(checked: boolean) => updateHcaptcha('enabled', checked)}
+            onCheckedChange={handleHcaptchaEnabledChange}
           >
             {formatMessage({
               id: getTranslation('settings.spam.hcaptcha.enable'),
               defaultMessage: 'Enable hCaptcha',
             })}
           </Checkbox>
-          {!hcaptchaEntitled && <ProBadge feature="spam.hcaptcha" />}
+          {hcaptchaAccess === 'unentitled' && <ProBadge feature="spam.hcaptcha" />}
         </Flex>
-        <Typography variant="pi" textColor="neutral600">
-          {formatMessage({
-            id: getTranslation('settings.spam.hcaptcha.hint'),
-            defaultMessage: 'Protect this form with hCaptcha bot verification (Pro)',
-          })}
-        </Typography>
+        {(hcaptchaAccess === 'entitled' || hcaptchaAccess === 'unentitled') && (
+          <Typography variant="pi" textColor="neutral600">
+            {formatMessage({
+              id: getTranslation('settings.spam.hcaptcha.hint'),
+              defaultMessage: 'Protect this form with hCaptcha bot verification (Pro)',
+            })}
+          </Typography>
+        )}
       </Flex>
 
       {hcaptcha.enabled && (
-        <LockedSection can={hcaptchaEntitled} feature="spam.hcaptcha" mode="readonly">
-          <Box
-            padding={4}
-            background="neutral100"
-            hasRadius
-            borderColor="neutral200"
-            borderStyle="solid"
-            borderWidth="1px"
-          >
-            <Grid.Root gap={4} gridCols={12}>
-              <Grid.Item col={6} xs={12} direction="column" alignItems="stretch">
-                <Field.Root
-                  name="hcaptchaSiteKey"
-                  hint={formatMessage({
-                    id: getTranslation('settings.spam.hcaptcha.siteKey.hint'),
-                    defaultMessage: 'Public key embedded in the form on the frontend',
-                  })}
-                >
-                  <Field.Label>
-                    {formatMessage({
-                      id: getTranslation('settings.spam.hcaptcha.siteKey.label'),
-                      defaultMessage: 'Site Key',
+        <LockedSection access={hcaptchaAccess} feature="spam.hcaptcha" mode="readonly">
+          {({ disabled }) => (
+            <Box
+              padding={4}
+              background="neutral100"
+              hasRadius
+              borderColor="neutral200"
+              borderStyle="solid"
+              borderWidth="1px"
+            >
+              <Grid.Root gap={4} gridCols={12}>
+                <Grid.Item col={6} xs={12} direction="column" alignItems="stretch">
+                  <Field.Root
+                    name="hcaptchaSiteKey"
+                    hint={formatMessage({
+                      id: getTranslation('settings.spam.hcaptcha.siteKey.hint'),
+                      defaultMessage: 'Public key embedded in the form on the frontend',
                     })}
-                  </Field.Label>
-                  <TextInput
-                    value={hcaptcha.siteKey ?? ''}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      updateHcaptcha('siteKey', e.target.value)
-                    }
-                    placeholder="10000000-ffff-..."
-                  />
-                  <Field.Hint />
-                </Field.Root>
-              </Grid.Item>
+                  >
+                    <Field.Label>
+                      {formatMessage({
+                        id: getTranslation('settings.spam.hcaptcha.siteKey.label'),
+                        defaultMessage: 'Site Key',
+                      })}
+                    </Field.Label>
+                    <TextInput
+                      value={hcaptcha.siteKey ?? ''}
+                      readOnly={disabled}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        updateHcaptcha('siteKey', e.target.value)
+                      }
+                      placeholder="10000000-ffff-..."
+                    />
+                    <Field.Hint />
+                  </Field.Root>
+                </Grid.Item>
 
-              <Grid.Item col={6} xs={12} direction="column" alignItems="stretch">
-                <Field.Root
-                  name="hcaptchaSecretKey"
-                  hint={formatMessage({
-                    id: getTranslation('settings.spam.hcaptcha.secretKey.hint'),
-                    defaultMessage: 'Stored server-side; used to verify tokens with hCaptcha',
-                  })}
-                >
-                  <Field.Label>
-                    {formatMessage({
-                      id: getTranslation('settings.spam.hcaptcha.secretKey.label'),
-                      defaultMessage: 'Secret Key',
+                <Grid.Item col={6} xs={12} direction="column" alignItems="stretch">
+                  <Field.Root
+                    name="hcaptchaSecretKey"
+                    hint={formatMessage({
+                      id: getTranslation('settings.spam.hcaptcha.secretKey.hint'),
+                      defaultMessage: 'Stored server-side; used to verify tokens with hCaptcha',
                     })}
-                  </Field.Label>
-                  <TextInput
-                    type="password"
-                    value={hcaptcha.secretKey ?? ''}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      updateHcaptcha('secretKey', e.target.value)
-                    }
-                    placeholder="0x0000..."
-                    autoComplete="new-password"
-                  />
-                  <Field.Hint />
-                </Field.Root>
-              </Grid.Item>
-            </Grid.Root>
-          </Box>
+                  >
+                    <Field.Label>
+                      {formatMessage({
+                        id: getTranslation('settings.spam.hcaptcha.secretKey.label'),
+                        defaultMessage: 'Secret Key',
+                      })}
+                    </Field.Label>
+                    <TextInput
+                      type="password"
+                      value={hcaptcha.secretKey ?? ''}
+                      readOnly={disabled}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        updateHcaptcha('secretKey', e.target.value)
+                      }
+                      placeholder="0x0000..."
+                      autoComplete="new-password"
+                    />
+                    <Field.Hint />
+                  </Field.Root>
+                </Grid.Item>
+              </Grid.Root>
+            </Box>
+          )}
         </LockedSection>
       )}
 
@@ -501,62 +569,67 @@ export const SpamSettings = ({ spam, onChange }: SpamSettingsProps) => {
       <Flex direction="column" gap={1} alignItems="stretch">
         <Flex gap={2} alignItems="center">
           <Checkbox
-            disabled={!ipBlocklistEntitled}
-            checked={!!spam.ipBlocklist}
-            onCheckedChange={(checked: boolean) =>
-              updateSpam('ipBlocklist', checked ? getDefaultIpBlocklist() : undefined)
+            disabled={
+              ipBlocklistEnabled ? !ipBlocklistPolicy.canRemove : !ipBlocklistPolicy.canEdit
             }
+            checked={ipBlocklistEnabled}
+            onCheckedChange={handleIpBlocklistEnabledChange}
           >
             {formatMessage({
               id: getTranslation('settings.spam.ipBlocklist.enable'),
               defaultMessage: 'Enable IP blocklist',
             })}
           </Checkbox>
-          {!ipBlocklistEntitled && <ProBadge feature="spam.ipBlocklist" />}
+          {ipBlocklistAccess === 'unentitled' && <ProBadge feature="spam.ipBlocklist" />}
         </Flex>
-        <Typography variant="pi" textColor="neutral600">
-          {formatMessage({
-            id: getTranslation('settings.spam.ipBlocklist.hint'),
-            defaultMessage: 'Block specific IP addresses from submitting this form (Pro)',
-          })}
-        </Typography>
+        {(ipBlocklistAccess === 'entitled' || ipBlocklistAccess === 'unentitled') && (
+          <Typography variant="pi" textColor="neutral600">
+            {formatMessage({
+              id: getTranslation('settings.spam.ipBlocklist.hint'),
+              defaultMessage: 'Block specific IP addresses from submitting this form (Pro)',
+            })}
+          </Typography>
+        )}
       </Flex>
 
       {spam.ipBlocklist && (
-        <LockedSection can={ipBlocklistEntitled} feature="spam.ipBlocklist" mode="readonly">
-          <Box
-            padding={4}
-            background="neutral100"
-            hasRadius
-            borderColor="neutral200"
-            borderStyle="solid"
-            borderWidth="1px"
-          >
-            <Field.Root
-              name="ipBlocklistIps"
-              hint={formatMessage({
-                id: getTranslation('settings.spam.ipBlocklist.ips.hint'),
-                defaultMessage:
-                  'One IP address per line. Exact IPv4/IPv6 match. Country blocking is not yet available.',
-              })}
+        <LockedSection access={ipBlocklistAccess} feature="spam.ipBlocklist" mode="readonly">
+          {({ disabled }) => (
+            <Box
+              padding={4}
+              background="neutral100"
+              hasRadius
+              borderColor="neutral200"
+              borderStyle="solid"
+              borderWidth="1px"
             >
-              <Field.Label>
-                {formatMessage({
-                  id: getTranslation('settings.spam.ipBlocklist.ips.label'),
-                  defaultMessage: 'Blocked IPs',
+              <Field.Root
+                name="ipBlocklistIps"
+                hint={formatMessage({
+                  id: getTranslation('settings.spam.ipBlocklist.ips.hint'),
+                  defaultMessage:
+                    'One IP address per line. Exact IPv4/IPv6 match. Country blocking is not yet available.',
                 })}
-              </Field.Label>
-              <Textarea
-                rows={6}
-                value={ipsToText(ipBlocklist.ips)}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  updateIpBlocklist('ips', textToIps(e.target.value))
-                }
-                placeholder={'1.2.3.4\n2001:db8::1'}
-              />
-              <Field.Hint />
-            </Field.Root>
-          </Box>
+              >
+                <Field.Label>
+                  {formatMessage({
+                    id: getTranslation('settings.spam.ipBlocklist.ips.label'),
+                    defaultMessage: 'Blocked IPs',
+                  })}
+                </Field.Label>
+                <Textarea
+                  rows={6}
+                  value={ipsToText(ipBlocklist.ips)}
+                  readOnly={disabled}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    updateIpBlocklist('ips', textToIps(e.target.value))
+                  }
+                  placeholder={'1.2.3.4\n2001:db8::1'}
+                />
+                <Field.Hint />
+              </Field.Root>
+            </Box>
+          )}
         </LockedSection>
       )}
     </Flex>

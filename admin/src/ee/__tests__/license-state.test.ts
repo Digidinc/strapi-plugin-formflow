@@ -7,6 +7,7 @@ import {
   featureAccess,
   licenseNoticeIdentity,
   parseLicenseSnapshot,
+  premiumMutationPolicy,
   reconcileDismissedNotice,
   resolveFeatureAccess,
   retryDelay,
@@ -54,6 +55,11 @@ assert.deepEqual(accessPresentation('checking'), {
 assert.equal(accessPresentation('unentitled').showUpgrade, true);
 assert.equal(accessPresentation('unavailable').showRetry, true);
 assert.equal(accessPresentation('entitled').disabled, false);
+
+assert.deepEqual(premiumMutationPolicy('entitled'), { canEdit: true, canRemove: true });
+assert.deepEqual(premiumMutationPolicy('unentitled'), { canEdit: false, canRemove: true });
+assert.deepEqual(premiumMutationPolicy('checking'), { canEdit: false, canRemove: false });
+assert.deepEqual(premiumMutationPolicy('unavailable'), { canEdit: false, canRemove: false });
 
 assert.equal(resolveFeatureAccess('entitled'), 'entitled');
 assert.equal(resolveFeatureAccess('unentitled'), 'unentitled');

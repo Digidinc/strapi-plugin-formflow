@@ -13,6 +13,11 @@ export interface AccessPresentation {
   reason: 'checking' | 'unentitled' | 'unavailable' | null;
 }
 
+export interface PremiumMutationPolicy {
+  canEdit: boolean;
+  canRemove: boolean;
+}
+
 export interface LicenseSnapshot {
   tier: 'free' | 'pro' | 'business';
   state: 'active' | 'grace' | 'expired' | 'free';
@@ -103,6 +108,18 @@ export function accessPresentation(access: FeatureAccess): AccessPresentation {
     showUpgrade: access === 'unentitled',
     showRetry: access === 'unavailable',
     reason: access === 'entitled' ? null : access,
+  };
+}
+
+/**
+ * Premium authoring fails closed while access is unresolved. A confirmed
+ * entitlement lapse still permits monotonic cleanup so administrators are not
+ * forced to retain configuration they can no longer edit.
+ */
+export function premiumMutationPolicy(access: FeatureAccess): PremiumMutationPolicy {
+  return {
+    canEdit: access === 'entitled',
+    canRemove: access === 'entitled' || access === 'unentitled',
   };
 }
 

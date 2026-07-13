@@ -8,24 +8,28 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { getTranslation } from '../../../utils/getTranslation';
 import { GatedButton } from '../GatedButton';
+import { LicenseStatusNotice } from '../LicenseStatusNotice';
+import { ProBadge } from '../ProBadge';
+import type { FeatureAccess } from '../../license-state';
 import type { FormStep, FormSettings } from '../../../utils/api';
 
 export interface StepsManagerProps {
   steps: FormStep[];
   settings: Partial<FormSettings>;
   onSettingsChange: (settings: Partial<FormSettings>) => void;
-  /** When false: renders steps read-only (Add Step + Remove + rename inputs all disabled). */
-  canEdit: boolean;
+  /** State-aware multi-step access; every mutation control is disabled unless entitled. */
+  access: FeatureAccess;
 }
 
 /**
  * Multi-step (wizard) steps manager. Owns add/rename/remove of `settings.steps`;
- * the per-field step-assignment dropdown lives in FormBuilder. When `canEdit` is
- * false the existing steps stay visible but all mutation controls are disabled,
- * and "Add Step" surfaces an upsell — existing Pro config is never hidden.
+ * the per-field step-assignment dropdown lives in FormBuilder. Existing steps
+ * stay visible while access is unresolved or locked, but all mutations receive
+ * real disabled state and the header explains why.
  */
-export const StepsManager = ({ steps, settings, onSettingsChange, canEdit }: StepsManagerProps) => {
+export const StepsManager = ({ steps, settings, onSettingsChange, access }: StepsManagerProps) => {
   const { formatMessage } = useIntl();
+  const disabled = access !== 'entitled';
 
   const handleAddStep = useCallback(() => {
     const newStep: FormStep = {
@@ -56,14 +60,17 @@ export const StepsManager = ({ steps, settings, onSettingsChange, canEdit }: Ste
   return (
     <Box background="neutral0" hasRadius shadow="tableShadow" padding={5} marginBottom={5}>
       <Flex justifyContent="space-between" alignItems="center" marginBottom={4}>
-        <Typography variant="delta" fontWeight="bold">
-          {formatMessage({
-            id: getTranslation('builder.steps.title'),
-            defaultMessage: 'Steps',
-          })}
-        </Typography>
+        <Flex gap={2} alignItems="center">
+          <Typography variant="delta" fontWeight="bold">
+            {formatMessage({
+              id: getTranslation('builder.steps.title'),
+              defaultMessage: 'Steps',
+            })}
+          </Typography>
+          {disabled ? <ProBadge feature="multistep" /> : null}
+        </Flex>
         <GatedButton
-          can={canEdit}
+          access={access}
           feature="multistep"
           size="S"
           variant="secondary"
@@ -76,6 +83,31 @@ export const StepsManager = ({ steps, settings, onSettingsChange, canEdit }: Ste
           })}
         </GatedButton>
       </Flex>
+
+      {access === 'checking' ? (
+        <Box marginBottom={4} role="status">
+          <Typography variant="pi" textColor="neutral600">
+            {formatMessage({
+              id: getTranslation('license.checking'),
+              defaultMessage: 'Checking FormFlow license…',
+            })}
+          </Typography>
+        </Box>
+      ) : access === 'unavailable' ? (
+        <Box marginBottom={4}>
+          <LicenseStatusNotice compact />
+        </Box>
+      ) : access === 'unentitled' ? (
+        <Box marginBottom={4}>
+          <Typography variant="pi" textColor="neutral600">
+            {formatMessage({
+              id: getTranslation('builder.steps.requiresPro'),
+              defaultMessage:
+                'Multi-step editing requires a Pro plan. Existing steps remain read-only.',
+            })}
+          </Typography>
+        </Box>
+      ) : null}
 
       {steps.length === 0 ? (
         <Box padding={4} background="neutral100" hasRadius textAlign="center">
@@ -107,7 +139,7 @@ export const StepsManager = ({ steps, settings, onSettingsChange, canEdit }: Ste
                       handleRenameStep(step.id, e.target.value)
                     }
                     placeholder="Step title"
-                    disabled={!canEdit}
+                    disabled={disabled}
                   />
                 </Field.Root>
               </Box>
@@ -119,7 +151,7 @@ export const StepsManager = ({ steps, settings, onSettingsChange, canEdit }: Ste
                   })}
                   variant="ghost"
                   onClick={() => handleRemoveStep(step.id)}
-                  disabled={!canEdit}
+                  disabled={disabled}
                   withTooltip={false}
                 >
                   <Trash />

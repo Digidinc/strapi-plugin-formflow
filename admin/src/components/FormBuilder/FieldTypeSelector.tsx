@@ -27,6 +27,7 @@ import { useLicense } from '../../ee/hooks/useLicense';
 import { FieldTypeLockState } from '../../ee/components/FieldTypeLockState';
 import { PURCHASE_URL } from '../../ee/components/UpsellCard';
 import type { FeatureKey, Tier } from '../../ee/feature-map';
+import type { FeatureAccess } from '../../ee/license-state';
 import type { FieldType } from '../../utils/api';
 
 export interface FieldTypeSelectorProps {
@@ -114,6 +115,29 @@ const FieldTypeTile = styled.button`
   }
 `;
 
+/** Neutral, non-upsell tile shown while premium access is unresolved. */
+const UnavailableFieldTypeTile = styled(FieldTypeTile)`
+  cursor: not-allowed;
+  background: ${({ theme }) => theme.colors.neutral100};
+
+  &:hover,
+  &:active {
+    border-color: ${({ theme }) => theme.colors.neutral200};
+    background: ${({ theme }) => theme.colors.neutral100};
+  }
+
+  svg path {
+    fill: ${({ theme }) => theme.colors.neutral500};
+  }
+`;
+
+const featureForFieldType = (fieldType: FieldType): FeatureKey | null => {
+  if (!fieldType.tier || fieldType.tier === 'free') return null;
+  return fieldType.type === 'consent'
+    ? 'compliance.consent'
+    : (`fields.${fieldType.type}` as FeatureKey);
+};
+
 /**
  * FieldTypeSelector modal component.
  * Displays available field types organized by category, with search, for
@@ -127,25 +151,16 @@ export const FieldTypeSelector = ({
   isLoading = false,
 }: FieldTypeSelectorProps) => {
   const { formatMessage } = useIntl();
-  const { can } = useLicense();
+  const { access } = useLicense();
   const { toggleNotification } = useNotification();
   const [search, setSearch] = useState('');
 
-  // A field type is locked when it carries a non-free tier and the current
-  // license does not entitle its feature key. Most types map to `fields.<type>`
-  // (e.g. `fields.signature`), but `consent` is gated on `compliance.consent` to
-  // match the server save-gate (controllers/form.ts), so the builder's
-  // locked/unlocked state agrees with what the server will accept on save.
-  // Free/absent-tier types are never locked.
-  const isFieldTypeLocked = (fieldType: FieldType) => {
-    if (!fieldType.tier || fieldType.tier === 'free') {
-      return false;
-    }
-    const featureKey: FeatureKey =
-      fieldType.type === 'consent'
-        ? 'compliance.consent'
-        : (`fields.${fieldType.type}` as FeatureKey);
-    return !can(featureKey);
+  // Free types stay interactive even when license verification is unresolved.
+  // Premium types preserve all four access states so an unknown result never
+  // masquerades as an upgrade prompt.
+  const accessForFieldType = (fieldType: FieldType): FeatureAccess => {
+    const feature = featureForFieldType(fieldType);
+    return feature === null ? 'entitled' : access(feature);
   };
 
   const categoryLabel = (category: string) =>
@@ -183,13 +198,23 @@ export const FieldTypeSelector = ({
   const hasResults = Object.keys(groupedTypes).length > 0;
 
   const handleSelect = (fieldType: FieldType) => {
-    if (isFieldTypeLocked(fieldType)) {
+    const fieldAccess = accessForFieldType(fieldType);
+    if (fieldAccess === 'unentitled') {
+      const requiredTier = fieldType.tier === 'business' ? 'Business' : 'Pro';
       toggleNotification({
         type: 'info',
-        message: `This field type requires a Pro license. ${PURCHASE_URL}`,
+        message: `${formatMessage(
+          {
+            id: getTranslation('fieldType.selector.requiresPlan'),
+            defaultMessage: 'This field type requires a {tier} plan.',
+          },
+          { tier: requiredTier }
+        )} ${PURCHASE_URL}`,
       });
-      return; // do not call onSelect
+      return;
     }
+    if (fieldAccess !== 'entitled') return;
+
     onSelect(fieldType.type);
     setSearch('');
     onClose();
@@ -272,41 +297,82 @@ export const FieldTypeSelector = ({
                     </Typography>
                     <Box marginTop={3}>
                       <Grid.Root gap={3} gridCols={12}>
-                        {types.map((fieldType) => (
-                          <Grid.Item
-                            key={fieldType.type}
-                            col={4}
-                            xs={6}
-                            direction="column"
-                            alignItems="stretch"
-                          >
-                            {isFieldTypeLocked(fieldType) ? (
-                              <FieldTypeLockState
-                                label={typeLabel(fieldType)}
-                                icon={fieldType.icon}
-                                tier={fieldType.tier as Tier}
-                                onLockedClick={() => handleSelect(fieldType)}
-                              />
-                            ) : (
-                              <FieldTypeTile
-                                type="button"
-                                onClick={() => handleSelect(fieldType)}
-                              >
-                                <Flex direction="column" alignItems="center" gap={2}>
-                                  <Flex>{getFieldIcon(fieldType.type)}</Flex>
-                                  <Typography
-                                    variant="pi"
-                                    fontWeight="bold"
-                                    textAlign="center"
-                                    textColor="neutral800"
-                                  >
-                                    {typeLabel(fieldType)}
-                                  </Typography>
-                                </Flex>
-                              </FieldTypeTile>
-                            )}
-                          </Grid.Item>
-                        ))}
+                        {types.map((fieldType) => {
+                          const fieldAccess = accessForFieldType(fieldType);
+                          const label = typeLabel(fieldType);
+                          const unavailableLabel =
+                            fieldAccess === 'checking'
+                              ? formatMessage({
+                                  id: getTranslation('license.checking'),
+                                  defaultMessage: 'Checking FormFlow license…',
+                                })
+                              : formatMessage({
+                                  id: getTranslation('fieldType.selector.unavailable'),
+                                  defaultMessage: 'License verification is unavailable.',
+                                });
+
+                          return (
+                            <Grid.Item
+                              key={fieldType.type}
+                              col={4}
+                              xs={6}
+                              direction="column"
+                              alignItems="stretch"
+                            >
+                              {fieldAccess === 'unentitled' ? (
+                                <FieldTypeLockState
+                                  label={label}
+                                  icon={fieldType.icon}
+                                  tier={fieldType.tier as Tier}
+                                  onLockedClick={() => handleSelect(fieldType)}
+                                />
+                              ) : fieldAccess === 'checking' || fieldAccess === 'unavailable' ? (
+                                <UnavailableFieldTypeTile
+                                  type="button"
+                                  disabled
+                                  title={`${label}: ${unavailableLabel}`}
+                                  aria-label={`${label}: ${unavailableLabel}`}
+                                >
+                                  <Flex direction="column" alignItems="center" gap={2}>
+                                    <Flex>{getFieldIcon(fieldType.type)}</Flex>
+                                    <Typography
+                                      variant="pi"
+                                      fontWeight="bold"
+                                      textAlign="center"
+                                      textColor="neutral700"
+                                    >
+                                      {label}
+                                    </Typography>
+                                    <Typography
+                                      variant="pi"
+                                      textAlign="center"
+                                      textColor="neutral600"
+                                    >
+                                      {unavailableLabel}
+                                    </Typography>
+                                  </Flex>
+                                </UnavailableFieldTypeTile>
+                              ) : (
+                                <FieldTypeTile
+                                  type="button"
+                                  onClick={() => handleSelect(fieldType)}
+                                >
+                                  <Flex direction="column" alignItems="center" gap={2}>
+                                    <Flex>{getFieldIcon(fieldType.type)}</Flex>
+                                    <Typography
+                                      variant="pi"
+                                      fontWeight="bold"
+                                      textAlign="center"
+                                      textColor="neutral800"
+                                    >
+                                      {label}
+                                    </Typography>
+                                  </Flex>
+                                </FieldTypeTile>
+                              )}
+                            </Grid.Item>
+                          );
+                        })}
                       </Grid.Root>
                     </Box>
                   </Box>

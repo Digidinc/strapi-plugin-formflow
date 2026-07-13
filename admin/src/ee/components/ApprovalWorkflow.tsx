@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
-import { useState } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import {
   Box,
   Flex,
@@ -17,6 +17,8 @@ import { useIntl } from 'react-intl';
 import { API, APPROVAL_STATUSES, type ApprovalStatus } from '../../utils/api';
 import { getTranslation } from '../../utils/getTranslation';
 import { useLicense } from '../hooks/useLicense';
+import { refreshLicenseOnPaymentRequired } from '../payment-required';
+import { LicenseStatusNotice } from './LicenseStatusNotice';
 import { UpsellCard } from './UpsellCard';
 
 export interface ApprovalWorkflowProps {
@@ -40,22 +42,47 @@ const STATUS_VARIANTS: Record<ApprovalStatus, 'secondary' | 'success' | 'danger'
 /**
  * Approval workflow panel (Business feature) for a single submission.
  *
- * Display gating: when `can('approval')` is false (free/pro tier, or while the
- * license is still loading — the safe over-restrictive default) an UpsellCard is
- * rendered. The server is the authoritative gate (402 on the approve endpoint);
- * this is purely UX. When entitled, shows the current status badge, a status
- * selector, an optional decision note and a save button.
+ * Unresolved verification renders a neutral status notice, while a confirmed
+ * unentitled plan renders the upgrade card. Fetch and mutation hooks live only
+ * in the entitled child so no premium request can originate from a locked
+ * branch. The server remains the authoritative gate (402 on the endpoint).
  */
-const ApprovalWorkflow = ({
+const ApprovalWorkflow = (props: ApprovalWorkflowProps) => {
+  const { formatMessage } = useIntl();
+  const { access } = useLicense();
+  const approvalAccess = access('approval');
+
+  switch (approvalAccess) {
+    case 'checking':
+      return <LicenseStatusNotice compact />;
+    case 'unavailable':
+      return <LicenseStatusNotice compact />;
+    case 'unentitled':
+      return (
+        <UpsellCard
+          access={approvalAccess}
+          feature="approval"
+          description={formatMessage({
+            id: getTranslation('approval.upsell'),
+            defaultMessage: 'Approval workflows require a Business license',
+          })}
+        />
+      );
+    case 'entitled':
+      return <EntitledApprovalWorkflow {...props} />;
+  }
+};
+
+const EntitledApprovalWorkflow = ({
   submissionId,
   approvalStatus = 'pending',
   approvalNote = '',
   onUpdated,
 }: ApprovalWorkflowProps) => {
   const { formatMessage } = useIntl();
-  const { can } = useLicense();
   const { put } = useFetchClient();
   const { toggleNotification } = useNotification();
+  const { refresh } = useLicense();
 
   const [status, setStatus] = useState<ApprovalStatus>(approvalStatus);
   const [note, setNote] = useState<string>(approvalNote);
@@ -65,18 +92,6 @@ const ApprovalWorkflow = ({
     id: getTranslation('approval.title'),
     defaultMessage: 'Approval',
   });
-
-  if (!can('approval')) {
-    return (
-      <UpsellCard
-        feature="approval"
-        description={formatMessage({
-          id: getTranslation('approval.upsell'),
-          defaultMessage: 'Approval workflows require a Business license',
-        })}
-      />
-    );
-  }
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -93,7 +108,11 @@ const ApprovalWorkflow = ({
         }),
       });
       onUpdated?.();
-    } catch {
+    } catch (error) {
+      if (await refreshLicenseOnPaymentRequired(error, refresh)) {
+        return;
+      }
+
       toggleNotification({
         type: 'danger',
         message: formatMessage({
@@ -155,9 +174,7 @@ const ApprovalWorkflow = ({
           </Field.Label>
           <Textarea
             value={note}
-            onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) =>
-              setNote(event.target.value)
-            }
+            onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setNote(event.target.value)}
             placeholder={formatMessage({
               id: getTranslation('approval.note.placeholder'),
               defaultMessage: 'Optional note for this decision',

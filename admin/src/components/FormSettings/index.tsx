@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import {
   Box,
+  Button,
   Flex,
   Typography,
   Field,
@@ -24,6 +25,7 @@ import type {
 import { SpamSettings } from './SpamSettings';
 import { RateLimitSettings } from './RateLimitSettings';
 import { useLicense } from '../../ee/hooks/useLicense';
+import { premiumMutationPolicy } from '../../ee/license-state';
 import { LockedSection } from '../../ee/components/LockedSection';
 import { ProBadge } from '../../ee/components/ProBadge';
 
@@ -102,10 +104,23 @@ export const FormSettings = ({
   onRequiresApprovalChange,
 }: FormSettingsProps) => {
   const { formatMessage } = useIntl();
-  const { can } = useLicense();
-  const multistepEntitled = can('multistep');
-  const whiteLabelEntitled = can('whiteLabel');
-  const approvalEntitled = can('approval');
+  const { access } = useLicense();
+  const multistepAccess = access('multistep');
+  const whiteLabelAccess = access('whiteLabel');
+  const approvalAccess = access('approval');
+  const multistepPolicy = premiumMutationPolicy(multistepAccess);
+  const whiteLabelPolicy = premiumMutationPolicy(whiteLabelAccess);
+  const approvalPolicy = premiumMutationPolicy(approvalAccess);
+  const currentLayout = settings.layout || 'single';
+  const checkingMessage = formatMessage({
+    id: getTranslation('license.checking'),
+    defaultMessage: 'Checking FormFlow license…',
+  });
+  const unavailableMessage = formatMessage({
+    id: getTranslation('license.unavailable'),
+    defaultMessage:
+      'FormFlow could not verify the current license. Premium controls are temporarily unavailable. Free features remain available.',
+  });
 
   // Update a single setting property
   const updateSetting = useCallback(
@@ -114,6 +129,27 @@ export const FormSettings = ({
     },
     [settings, onSettingsChange]
   );
+
+  const handleRequiresApprovalChange = (checked: boolean | 'indeterminate') => {
+    const nextRequiresApproval = checked === true;
+    const allowed = nextRequiresApproval ? approvalPolicy.canEdit : approvalPolicy.canRemove;
+    if (!allowed) return;
+    onRequiresApprovalChange(nextRequiresApproval);
+  };
+
+  const handleLayoutChange = (value: string | number) => {
+    const nextLayout = value as 'single' | 'multi-step';
+    if (nextLayout === 'multi-step' && !multistepPolicy.canEdit) return;
+    if (currentLayout === 'multi-step' && nextLayout === 'single' && !multistepPolicy.canRemove) {
+      return;
+    }
+    updateSetting('layout', nextLayout);
+  };
+
+  const handleRemoveCustomCss = () => {
+    if (!whiteLabelPolicy.canRemove) return;
+    updateSetting('customCss', '');
+  };
 
   // Update spam protection settings
   const handleSpamChange = useCallback(
@@ -202,26 +238,30 @@ export const FormSettings = ({
                 Form field, not a settings key — toggled via its own handler. */}
             <Field.Root
               name="requiresApproval"
-              hint={formatMessage({
-                id: getTranslation('settings.requiresApproval.hint'),
-                defaultMessage:
-                  'Hold new submissions for manual approval before they count as processed.',
-              })}
+              hint={
+                approvalAccess === 'checking'
+                  ? checkingMessage
+                  : approvalAccess === 'unavailable'
+                    ? unavailableMessage
+                    : formatMessage({
+                        id: getTranslation('settings.requiresApproval.hint'),
+                        defaultMessage:
+                          'Hold new submissions for manual approval before they count as processed.',
+                      })
+              }
             >
               <Flex gap={2} alignItems="center">
                 <Checkbox
                   checked={requiresApproval}
-                  disabled={!approvalEntitled}
-                  onCheckedChange={(checked: boolean | 'indeterminate') =>
-                    onRequiresApprovalChange(checked === true)
-                  }
+                  disabled={requiresApproval ? !approvalPolicy.canRemove : !approvalPolicy.canEdit}
+                  onCheckedChange={handleRequiresApprovalChange}
                 >
                   {formatMessage({
                     id: getTranslation('settings.requiresApproval.label'),
                     defaultMessage: 'Require approval for new submissions',
                   })}
                 </Checkbox>
-                {!approvalEntitled && <ProBadge tier="business" />}
+                {approvalAccess === 'unentitled' && <ProBadge tier="business" />}
               </Flex>
               <Field.Hint />
             </Field.Root>
@@ -309,15 +349,27 @@ export const FormSettings = ({
             <Field.Root
               name="layout"
               hint={
-                settings.layout === 'multi-step'
-                  ? formatMessage({
-                      id: getTranslation('settings.layout.multiStep.hint'),
-                      defaultMessage: 'Configure steps in the Form Builder tab',
-                    })
-                  : formatMessage({
-                      id: getTranslation('settings.layout.single.hint'),
-                      defaultMessage: 'All fields displayed on a single page',
-                    })
+                multistepAccess === 'checking'
+                  ? checkingMessage
+                  : multistepAccess === 'unavailable'
+                    ? unavailableMessage
+                    : multistepAccess === 'unentitled'
+                      ? formatMessage(
+                          {
+                            id: getTranslation('license.upgradeRequired'),
+                            defaultMessage: 'This feature requires a {tier} plan.',
+                          },
+                          { tier: 'Pro' }
+                        )
+                      : settings.layout === 'multi-step'
+                        ? formatMessage({
+                            id: getTranslation('settings.layout.multiStep.hint'),
+                            defaultMessage: 'Configure steps in the Form Builder tab',
+                          })
+                        : formatMessage({
+                            id: getTranslation('settings.layout.single.hint'),
+                            defaultMessage: 'All fields displayed on a single page',
+                          })
               }
             >
               <Field.Label>
@@ -327,13 +379,9 @@ export const FormSettings = ({
                 })}
               </Field.Label>
               <SingleSelect
-                value={settings.layout || 'single'}
-                onChange={(value: string | number) => {
-                  if (value === 'multi-step' && !multistepEntitled) {
-                    return;
-                  }
-                  updateSetting('layout', value as 'single' | 'multi-step');
-                }}
+                value={currentLayout}
+                disabled={currentLayout === 'multi-step' && !multistepPolicy.canRemove}
+                onChange={handleLayoutChange}
               >
                 <SingleSelectOption value="single">
                   {formatMessage({
@@ -341,12 +389,12 @@ export const FormSettings = ({
                     defaultMessage: 'Single page',
                   })}
                 </SingleSelectOption>
-                <SingleSelectOption value="multi-step">
+                <SingleSelectOption value="multi-step" disabled={multistepAccess !== 'entitled'}>
                   {formatMessage({
                     id: getTranslation('settings.layout.multiStep'),
                     defaultMessage: 'Multi-step',
                   })}
-                  {!multistepEntitled && (
+                  {multistepAccess === 'unentitled' && (
                     <>
                       {' '}
                       <ProBadge tier="pro" />
@@ -386,42 +434,69 @@ export const FormSettings = ({
         <Divider />
 
         {/* Custom CSS Section */}
-        <LockedSection can={whiteLabelEntitled} feature="whiteLabel" mode="readonly">
-          <SettingsSection
-            title={formatMessage({
-              id: getTranslation('settings.customCss.title'),
-              defaultMessage: 'Custom CSS',
-            })}
-            badge={!whiteLabelEntitled ? <ProBadge tier="pro" /> : undefined}
-          >
-            <Field.Root
-              name="customCss"
-              hint={formatMessage({
-                id: getTranslation('settings.customCss.hint'),
-                defaultMessage:
-                  'Exposed in the public form schema and injected by the consuming frontend when rendering this form. Not applied inside the admin panel.',
-              })}
-            >
-              <Field.Label>
-                {formatMessage({
-                  id: getTranslation('settings.customCss.label'),
+        <Box>
+          <LockedSection access={whiteLabelAccess} feature="whiteLabel" mode="readonly">
+            {({ disabled }) => (
+              <SettingsSection
+                title={formatMessage({
+                  id: getTranslation('settings.customCss.title'),
                   defaultMessage: 'Custom CSS',
                 })}
-              </Field.Label>
-              <MonospaceTextarea
-                value={settings.customCss || ''}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  updateSetting('customCss', e.target.value)
-                }
-                placeholder={formatMessage({
-                  id: getTranslation('settings.customCss.placeholder'),
-                  defaultMessage: '.my-form { /* your styles */ }',
+                badge={whiteLabelAccess === 'unentitled' ? <ProBadge tier="pro" /> : undefined}
+              >
+                {(whiteLabelAccess === 'checking' || whiteLabelAccess === 'unavailable') && (
+                  <Box marginBottom={3} role="status">
+                    <Typography variant="pi" textColor="neutral600">
+                      {whiteLabelAccess === 'checking' ? checkingMessage : unavailableMessage}
+                    </Typography>
+                  </Box>
+                )}
+                <Field.Root
+                  name="customCss"
+                  hint={formatMessage({
+                    id: getTranslation('settings.customCss.hint'),
+                    defaultMessage:
+                      'Exposed in the public form schema and injected by the consuming frontend when rendering this form. Not applied inside the admin panel.',
+                  })}
+                >
+                  <Field.Label>
+                    {formatMessage({
+                      id: getTranslation('settings.customCss.label'),
+                      defaultMessage: 'Custom CSS',
+                    })}
+                  </Field.Label>
+                  <MonospaceTextarea
+                    value={settings.customCss || ''}
+                    readOnly={disabled}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                      updateSetting('customCss', e.target.value)
+                    }
+                    placeholder={formatMessage({
+                      id: getTranslation('settings.customCss.placeholder'),
+                      defaultMessage: '.my-form { /* your styles */ }',
+                    })}
+                  />
+                  <Field.Hint />
+                </Field.Root>
+              </SettingsSection>
+            )}
+          </LockedSection>
+          {Boolean(settings.customCss) && !whiteLabelPolicy.canEdit && (
+            <Flex justifyContent="flex-end" marginTop={3}>
+              <Button
+                type="button"
+                variant="danger-light"
+                onClick={handleRemoveCustomCss}
+                disabled={!whiteLabelPolicy.canRemove}
+              >
+                {formatMessage({
+                  id: getTranslation('settings.customCss.remove'),
+                  defaultMessage: 'Remove custom CSS',
                 })}
-              />
-              <Field.Hint />
-            </Field.Root>
-          </SettingsSection>
-        </LockedSection>
+              </Button>
+            </Flex>
+          )}
+        </Box>
       </Flex>
     </Box>
   );

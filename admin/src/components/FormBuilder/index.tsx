@@ -160,7 +160,7 @@ const DragHandle = styled(Flex)`
  */
 export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: FormBuilderProps) => {
   const { formatMessage } = useIntl();
-  const { can, access } = useLicense();
+  const { access } = useLicense();
   const { toggleNotification } = useNotification();
   const { fieldTypes, isLoading: isLoadingFieldTypes } = useFieldTypes();
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
@@ -172,6 +172,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
   const [fieldPendingDeletion, setFieldPendingDeletion] = useState<string | null>(null);
 
   const conditionalAccess = access('conditionalLogic');
+  const multistepAccess = access('multistep');
   const conditionalRequiresProMessage = formatMessage({
     id: getTranslation('fieldEditor.conditional.requiresPro'),
     defaultMessage: 'Conditional Logic requires a Pro plan.',
@@ -181,6 +182,21 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
     defaultMessage:
       'FormFlow could not verify the current license. Premium controls are temporarily unavailable. Free features remain available.',
   });
+  const licenseCheckingMessage = formatMessage({
+    id: getTranslation('license.checking'),
+    defaultMessage: 'Checking FormFlow license…',
+  });
+  const multistepAssignmentHint =
+    multistepAccess === 'checking'
+      ? licenseCheckingMessage
+      : multistepAccess === 'unavailable'
+        ? licenseVerificationUnavailableMessage
+        : multistepAccess === 'unentitled'
+          ? formatMessage({
+              id: getTranslation('builder.steps.assign.requiresPro'),
+              defaultMessage: 'Step assignment requires a Pro plan.',
+            })
+          : undefined;
 
   const isMultiStep = settings.layout === 'multi-step';
   const steps = useMemo<FormStep[]>(() => settings.steps || [], [settings.steps]);
@@ -256,7 +272,9 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
           type: 'info',
           message: presentation.showUpgrade
             ? conditionalRequiresProMessage
-            : licenseVerificationUnavailableMessage,
+            : presentation.reason === 'checking'
+              ? licenseCheckingMessage
+              : licenseVerificationUnavailableMessage,
         });
         return;
       }
@@ -278,6 +296,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
       conditionalAccess,
       conditionalRequiresProMessage,
       fields,
+      licenseCheckingMessage,
       licenseVerificationUnavailableMessage,
       onChange,
       toggleNotification,
@@ -412,7 +431,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
           steps={steps}
           settings={settings}
           onSettingsChange={onSettingsChange}
-          canEdit={can('multistep')}
+          access={multistepAccess}
         />
       )}
 
@@ -572,7 +591,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
                         <Box marginTop={3} marginBottom={3}>
                           <Divider />
                         </Box>
-                        <Field.Root name={`field-step-${field.id}`}>
+                        <Field.Root name={`field-step-${field.id}`} hint={multistepAssignmentHint}>
                           <Field.Label>
                             {formatMessage({
                               id: getTranslation('builder.steps.assign'),
@@ -584,7 +603,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
                             onChange={(value: string | number) =>
                               handleAssignFieldToStep(field.id, value ? String(value) : null)
                             }
-                            disabled={!can('multistep')}
+                            disabled={multistepAccess !== 'entitled'}
                           >
                             <SingleSelectOption value="">
                               {formatMessage({
@@ -598,6 +617,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
                               </SingleSelectOption>
                             ))}
                           </SingleSelect>
+                          <Field.Hint />
                         </Field.Root>
                       </>
                     )}

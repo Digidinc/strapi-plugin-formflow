@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Box } from '@strapi/design-system';
 import { useIntl } from 'react-intl';
 
-import { type FeatureKey } from '../feature-map';
+import { FEATURE_TIER, type FeatureKey } from '../feature-map';
 import { accessPresentation, type FeatureAccess } from '../license-state';
 import { LicenseStatusNotice } from './LicenseStatusNotice';
 import { UpsellCard } from './UpsellCard';
@@ -13,64 +13,79 @@ export type LockedSectionChild = (state: {
   disabled: boolean;
 }) => React.ReactNode;
 
-export interface LockedSectionProps {
-  /** State-aware access. New callers should prefer this over the legacy `can` prop. */
-  access?: FeatureAccess;
-  /** Temporary boolean compatibility for callers awaiting the Task 10 migration. */
-  can?: boolean;
+interface LockedSectionBaseProps {
+  /** Explicit state-aware access for the gated feature. */
+  access: FeatureAccess;
   /** readonly: children rendered but all interactive controls disabled.
    *  replace: children replaced entirely with <UpsellCard>. */
-  mode?: 'readonly' | 'replace';
   /** Forwarded to UpsellCard when mode="replace". */
   feature: FeatureKey;
   /** Optional description forwarded to UpsellCard. */
   description?: string;
-  children: React.ReactNode | LockedSectionChild;
 }
 
+export type LockedSectionProps = LockedSectionBaseProps &
+  (
+    | { mode: 'readonly'; children: LockedSectionChild }
+    | { mode?: 'replace'; children: React.ReactNode }
+  );
+
 /**
- * Gates a section of the admin UI from explicit access, with temporary boolean
- * compatibility for callers that have not migrated yet.
+ * Gates a section of the admin UI from explicit feature access.
  *
  * - entitled: renders children untouched.
  * - checking/unavailable + replace: renders state-specific status UI.
  * - unentitled + replace (default): swaps in an <UpsellCard>.
- * - locked + readonly: renders children but blocks interaction (pointer-events
- *   off, dimmed) so existing form-state values are preserved.
- *
- * Missing access degrades to the locked state, never an error.
+ * - locked + readonly: renders dimmed children whose controls receive real
+ *   disabled/readOnly state through the render-function contract.
  */
 export const LockedSection = ({
   access,
-  can,
   mode = 'replace',
   feature,
   description,
   children,
 }: LockedSectionProps) => {
   const { formatMessage } = useIntl();
-  const resolvedAccess = access ?? (can === true ? 'entitled' : 'unentitled');
-  const presentation = accessPresentation(resolvedAccess);
+  const presentation = accessPresentation(access);
   const renderedChildren =
     typeof children === 'function'
-      ? children({ access: resolvedAccess, disabled: presentation.disabled })
+      ? children({ access, disabled: presentation.disabled })
       : children;
+  const requiredTier = FEATURE_TIER[feature] === 'business' ? 'Business' : 'Pro';
+  const lockedReason =
+    access === 'checking'
+      ? formatMessage({
+          id: 'formflow.license.checking',
+          defaultMessage: 'Checking FormFlow license…',
+        })
+      : access === 'unavailable'
+        ? formatMessage({
+            id: 'formflow.license.unavailable',
+            defaultMessage:
+              'FormFlow could not verify the current license. Premium controls are temporarily unavailable. Free features remain available.',
+          })
+        : formatMessage(
+            {
+              id: 'formflow.license.upgradeRequired',
+              defaultMessage: 'This feature requires a {tier} plan.',
+            },
+            { tier: requiredTier }
+          );
 
-  if (resolvedAccess === 'entitled') {
+  if (access === 'entitled') {
     return <>{renderedChildren}</>;
   }
 
   if (mode === 'readonly') {
-    // TODO(Task 10): Remove pointer blocking once every caller passes real
-    // disabled/readOnly state through the render-function child contract.
     return (
-      <Box style={{ pointerEvents: 'none', opacity: 0.6 }} aria-disabled>
+      <Box style={{ opacity: 0.6 }} role="group" aria-label={lockedReason} aria-disabled>
         {renderedChildren}
       </Box>
     );
   }
 
-  if (resolvedAccess === 'checking') {
+  if (access === 'checking') {
     return (
       <Box padding={4} role="status">
         {formatMessage({
@@ -81,7 +96,7 @@ export const LockedSection = ({
     );
   }
 
-  if (resolvedAccess === 'unavailable') {
+  if (access === 'unavailable') {
     return <LicenseStatusNotice compact />;
   }
 
