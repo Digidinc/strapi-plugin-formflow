@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import {
   resolveConditionalLogicBody,
@@ -98,5 +100,30 @@ const cases: Array<{
 for (const testCase of cases) {
   assert.equal(resolveConditionalLogicBody(testCase.input), testCase.expected, testCase.name);
 }
+
+const builderSource = readFileSync(
+  resolve(process.cwd(), 'admin/src/ee/components/FormBuilder/ConditionalLogicBuilder.tsx'),
+  'utf8'
+);
+const repairStart = builderSource.indexOf("case 'repair-rule':");
+const prerequisiteStart = builderSource.indexOf("case 'prerequisite':", repairStart);
+assert.notEqual(repairStart, -1, 'repair-rule branch must exist');
+assert.notEqual(prerequisiteStart, -1, 'repair-rule branch must have a bounded successor');
+
+const repairBranch = builderSource.slice(repairStart, prerequisiteStart);
+assert.doesNotMatch(
+  repairBranch,
+  /<Alert\b/,
+  'the persistent repair warning must not render a dismiss action container'
+);
+assert.doesNotMatch(
+  repairBranch,
+  /\bcloseLabel=/,
+  'the persistent repair warning must not expose a no-op Close control'
+);
+assert.match(repairBranch, /role="status"/);
+assert.match(repairBranch, /\{danglingCopy\}/);
+assert.match(repairBranch, /\{editor\}/);
+assert.doesNotMatch(builderSource, /^\s*Alert,\s*$/m, 'the obsolete Alert import must be removed');
 
 console.log('All assertions passed: conditional logic body priority is deterministic.');

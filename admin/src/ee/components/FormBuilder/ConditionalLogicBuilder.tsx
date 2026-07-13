@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 import * as React from 'react';
 import {
-  Alert,
   Box,
   Checkbox,
   Field,
@@ -274,15 +273,11 @@ export const ConditionalLogicBuilder = ({
     case 'repair-rule':
       body = (
         <Flex direction="column" gap={3} alignItems="stretch">
-          <Alert
-            closeLabel={formatMessage({
-              id: getTranslation('common.close'),
-              defaultMessage: 'Close',
-            })}
-            variant="warning"
-          >
-            {danglingCopy}
-          </Alert>
+          <Box padding={3} background="warning100" hasRadius role="status">
+            <Typography variant="pi" textColor="warning700">
+              {danglingCopy}
+            </Typography>
+          </Box>
           {editor}
         </Flex>
       );
