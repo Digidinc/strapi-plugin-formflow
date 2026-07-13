@@ -396,7 +396,7 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
     if (canConsent) {
       try {
         const capturedAt = new Date().toISOString();
-        const consents = formFields
+        const consents = visibleFields
           .filter((field) => field.type === 'consent')
           .map((field) => ({
             field: field.name,

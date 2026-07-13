@@ -7,7 +7,13 @@ interface CreateCall {
   data: Record<string, any>;
 }
 
+interface UpdateCall {
+  documentId: string;
+  data: Record<string, any>;
+}
+
 const createdRows: CreateCall[] = [];
+const updatedRows: UpdateCall[] = [];
 const uploadCalls: unknown[] = [];
 
 const form: SubmittableForm = {
@@ -42,6 +48,13 @@ const form: SubmittableForm = {
       ],
       conditional: { field: 'show_details', operator: 'equals', value: 'yes' },
     },
+    {
+      id: 'conditional-consent-id',
+      type: 'consent',
+      name: 'conditional_consent',
+      label: 'Conditional consent',
+      conditional: { field: 'show_details', operator: 'equals', value: 'yes' },
+    },
   ],
   settings: {},
 };
@@ -65,7 +78,7 @@ const strapi: any = {
           if (serviceName === 'license') {
             return {
               can(feature: string) {
-                return feature === 'saveResume';
+                return feature === 'saveResume' || feature === 'compliance.consent';
               },
             };
           }
@@ -117,6 +130,10 @@ const strapi: any = {
           updatedAt: '2026-01-01T00:00:00.000Z',
         };
       },
+      async update(args: UpdateCall) {
+        updatedRows.push(args);
+        return args;
+      },
     };
   },
   config: {
@@ -146,7 +163,11 @@ void (async () => {
 
   await service.submit(
     form.slug,
-    { show_details: 'no', hidden_text: 'must not persist' },
+    {
+      show_details: 'no',
+      hidden_text: 'must not persist',
+      conditional_consent: true,
+    },
     metadata,
     { hidden_file: hiddenInvalidFile }
   );
@@ -155,18 +176,28 @@ void (async () => {
   assert.equal(hiddenStoredData.hidden_text, undefined);
   assert.equal(uploadCalls.length, 0);
   assert.equal(hiddenStoredData.hidden_file, undefined);
+  assert.equal(hiddenStoredData.conditional_consent, undefined);
+  assert.equal(updatedRows.length, 0);
 
   const visibleFile = {
     originalFilename: 'visible.png',
     mimetype: 'image/png',
     size: 256,
   };
-  await service.submit(form.slug, { show_details: 'yes', hidden_text: 'visible value' }, metadata, {
-    hidden_file: visibleFile,
-  });
+  await service.submit(
+    form.slug,
+    {
+      show_details: 'yes',
+      hidden_text: 'visible value',
+      conditional_consent: true,
+    },
+    metadata,
+    { hidden_file: visibleFile }
+  );
 
   const visibleStoredData = createdRows[1].data.data as Record<string, unknown>;
   assert.equal(visibleStoredData.hidden_text, 'visible value');
+  assert.equal(visibleStoredData.conditional_consent, true);
   assert.equal(uploadCalls.length, 1);
   assert.deepEqual(visibleStoredData.hidden_file, {
     id: 1,
@@ -176,6 +207,21 @@ void (async () => {
     mime: 'image/png',
     size: 256,
   });
+  assert.equal(updatedRows.length, 1);
+  const visibleConsent = updatedRows[0].data.metadata.consents[0];
+  assert.deepEqual(
+    {
+      field: visibleConsent.field,
+      label: visibleConsent.label,
+      accepted: visibleConsent.accepted,
+    },
+    {
+      field: 'conditional_consent',
+      label: 'Conditional consent',
+      accepted: true,
+    }
+  );
+  assert.equal(typeof visibleConsent.capturedAt, 'string');
 
   const rowsBeforeInvalidFile = createdRows.length;
   const uploadsBeforeInvalidFile = uploadCalls.length;
