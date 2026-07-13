@@ -290,6 +290,16 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     const formFields = form.fields || [];
     const visibilityData = { ...submissionData };
+    for (const field of formFields) {
+      if (field.type === 'file') {
+        // Multipart files live outside the request body. Mirror their raw
+        // presence into this one-time visibility snapshot so file sources work
+        // with is_empty/is_not_empty before validation or upload. This value is
+        // never written back to submissionData, so only uploaded media refs are
+        // persisted later.
+        visibilityData[field.name] = files[field.name];
+      }
+    }
     const { visible: visibleFields } = partitionFieldsByVisibility(formFields, visibilityData);
 
     // Validate non-file submission data against form field definitions.

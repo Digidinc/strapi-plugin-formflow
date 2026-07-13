@@ -55,6 +55,40 @@ const form: SubmittableForm = {
       label: 'Conditional consent',
       conditional: { field: 'show_details', operator: 'equals', value: 'yes' },
     },
+    {
+      id: 'file-source-id',
+      type: 'file',
+      name: 'supporting_document',
+      label: 'Supporting document',
+    },
+    {
+      id: 'empty-file-source-text-id',
+      type: 'text',
+      name: 'no_document_note',
+      label: 'No-document note',
+      conditional: { field: 'supporting_document', operator: 'is_empty' },
+    },
+    {
+      id: 'empty-file-source-file-id',
+      type: 'file',
+      name: 'no_document_attachment',
+      label: 'No-document attachment',
+      conditional: { field: 'supporting_document', operator: 'is_empty' },
+    },
+    {
+      id: 'present-file-source-text-id',
+      type: 'text',
+      name: 'with_document_note',
+      label: 'With-document note',
+      conditional: { field: 'supporting_document', operator: 'is_not_empty' },
+    },
+    {
+      id: 'present-file-source-file-id',
+      type: 'file',
+      name: 'with_document_attachment',
+      label: 'With-document attachment',
+      conditional: { field: 'supporting_document', operator: 'is_not_empty' },
+    },
   ],
   settings: {},
 };
@@ -237,6 +271,105 @@ void (async () => {
   );
   assert.equal(uploadCalls.length, uploadsBeforeInvalidFile);
   assert.equal(createdRows.length, rowsBeforeInvalidFile);
+
+  const visibleEmptySourceFile = {
+    originalFilename: 'no-document.png',
+    mimetype: 'image/png',
+    size: 256,
+  };
+  const uploadsBeforeEmptySource = uploadCalls.length;
+  await service.submit(
+    form.slug,
+    {
+      show_details: 'no',
+      no_document_note: 'visible without a source file',
+      with_document_note: 'must not persist without a source file',
+    },
+    metadata,
+    {
+      no_document_attachment: visibleEmptySourceFile,
+      with_document_attachment: hiddenInvalidFile,
+    }
+  );
+
+  const emptySourceStoredData = createdRows[createdRows.length - 1].data.data as Record<
+    string,
+    unknown
+  >;
+  assert.equal(emptySourceStoredData.supporting_document, undefined);
+  assert.equal(emptySourceStoredData.no_document_note, 'visible without a source file');
+  assert.equal(emptySourceStoredData.with_document_note, undefined);
+  assert.equal(emptySourceStoredData.with_document_attachment, undefined);
+  assert.deepEqual(emptySourceStoredData.no_document_attachment, {
+    id: 1,
+    documentId: 'uploaded-file-id',
+    url: '/uploads/conditional.png',
+    name: 'conditional.png',
+    mime: 'image/png',
+    size: 256,
+  });
+  assert.equal(uploadCalls.length, uploadsBeforeEmptySource + 1);
+  assert.deepEqual(
+    uploadCalls.slice(uploadsBeforeEmptySource).map((call: any) => call.files[0].originalFilename),
+    ['no-document.png']
+  );
+
+  const sourceFile = {
+    originalFilename: 'source.png',
+    mimetype: 'image/png',
+    size: 256,
+  };
+  const visiblePresentSourceFile = {
+    originalFilename: 'with-document.png',
+    mimetype: 'image/png',
+    size: 256,
+  };
+  const uploadsBeforePresentSource = uploadCalls.length;
+  await service.submit(
+    form.slug,
+    {
+      show_details: 'no',
+      no_document_note: 'must not persist with a source file',
+      with_document_note: 'visible with a source file',
+    },
+    metadata,
+    {
+      supporting_document: sourceFile,
+      no_document_attachment: hiddenInvalidFile,
+      with_document_attachment: visiblePresentSourceFile,
+    }
+  );
+
+  const presentSourceStoredData = createdRows[createdRows.length - 1].data.data as Record<
+    string,
+    unknown
+  >;
+  assert.equal(presentSourceStoredData.no_document_note, undefined);
+  assert.equal(presentSourceStoredData.no_document_attachment, undefined);
+  assert.equal(presentSourceStoredData.with_document_note, 'visible with a source file');
+  assert.deepEqual(presentSourceStoredData.supporting_document, {
+    id: 1,
+    documentId: 'uploaded-file-id',
+    url: '/uploads/conditional.png',
+    name: 'conditional.png',
+    mime: 'image/png',
+    size: 256,
+  });
+  assert.deepEqual(presentSourceStoredData.with_document_attachment, {
+    id: 1,
+    documentId: 'uploaded-file-id',
+    url: '/uploads/conditional.png',
+    name: 'conditional.png',
+    mime: 'image/png',
+    size: 256,
+  });
+  assert.equal(uploadCalls.length, uploadsBeforePresentSource + 2);
+  assert.deepEqual(
+    uploadCalls
+      .slice(uploadsBeforePresentSource)
+      .map((call: any) => call.files[0].originalFilename),
+    ['source.png', 'with-document.png']
+  );
 
   await service.savePartial(
     form.slug,
