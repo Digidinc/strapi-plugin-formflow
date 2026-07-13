@@ -100,8 +100,8 @@ const licenseService = ({ strapi }: { strapi: Core.Strapi }): LicenseService => 
       if (eeImpl) eeImpl.destroy();
     },
 
-    async refresh(): Promise<void> {
-      if (eeImpl) await eeImpl.refresh();
+    refresh(): Promise<void> {
+      return eeImpl ? eeImpl.refresh() : Promise.resolve();
     },
 
     whenReady(): Promise<void> {

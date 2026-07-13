@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 
+import coreLicenseService from '../../../services/license';
 import { createLicenseService, type LicenseDependencies, type LicenseService } from '../service';
 
 const NOW = new Date('2026-02-01T00:00:00.000Z');
@@ -132,6 +133,36 @@ void (async () => {
     assert.equal(cached.can('conditionalLogic'), true);
     cachedValidation.resolve(UNREACHABLE);
     await cached.whenReady();
+    assert.equal(cached.snapshot().resolution, 'resolved');
+    assert.equal(cached.snapshot().state, 'grace');
+    assert.equal(cached.can('conditionalLogic'), true);
+
+    const expiredKey = 'raw-expired-cache-license-key';
+    const expiredValidation = deferred<typeof VALID_PRO>();
+    const expired = create(
+      expiredKey,
+      dependencies({ validate: () => expiredValidation.promise }),
+      {
+        'license-key-hash': createHash('sha256').update(expiredKey).digest('hex'),
+        'license-cache': {
+          tier: 'pro',
+          status: 'active',
+          validUntil: '2026-01-15T00:00:00.000Z',
+          lastValidatedAt: '2026-01-01T00:00:00.000Z',
+          graceUntil: '2026-01-31T00:00:00.000Z',
+        },
+      }
+    );
+    await expired.init();
+    assert.equal(expired.snapshot().resolution, 'checking');
+    assert.equal(expired.snapshot().tier, 'free');
+    assert.equal(expired.snapshot().state, 'expired');
+    assert.equal(expired.can('conditionalLogic'), false);
+    expiredValidation.resolve(VALID_PRO);
+    await expired.whenReady();
+    assert.equal(expired.snapshot().resolution, 'resolved');
+    assert.equal(expired.snapshot().tier, 'pro');
+    assert.equal(expired.snapshot().state, 'active');
 
     const invalid = create(
       'raw-invalid-license-key',
@@ -164,6 +195,46 @@ void (async () => {
     assert.equal(retrying.snapshot().resolution, 'resolved');
     assert.equal(retrying.snapshot().tier, 'pro');
 
+    let staleNow = new Date(NOW);
+    let staleValidationCalls = 0;
+    const staleKey = 'raw-stale-cache-license-key';
+    const stale = create(
+      staleKey,
+      dependencies({
+        now: () => new Date(staleNow),
+        validate: async () => {
+          staleValidationCalls += 1;
+          if (staleValidationCalls === 1) return UNREACHABLE;
+          throw new Error('injected validation failure');
+        },
+      }),
+      {
+        'license-key-hash': createHash('sha256').update(staleKey).digest('hex'),
+        'license-cache': {
+          tier: 'pro',
+          status: 'active',
+          validUntil: '2026-01-15T00:00:00.000Z',
+          lastValidatedAt: '2026-01-01T00:00:00.000Z',
+          graceUntil: '2026-02-15T00:00:00.000Z',
+        },
+      }
+    );
+    await stale.init();
+    await stale.whenReady();
+    assert.equal(stale.snapshot().state, 'grace');
+    assert.equal(stale.can('conditionalLogic'), true);
+
+    staleNow = new Date('2026-02-16T00:00:00.000Z');
+    assert.equal(stale.can('conditionalLogic'), false);
+    assert.equal(stale.snapshot().features.conditionalLogic, false);
+    const staleRefresh = stale.refresh();
+    assert.equal(stale.snapshot().resolution, 'checking');
+    await staleRefresh;
+    assert.equal(stale.snapshot().resolution, 'unavailable');
+    assert.equal(stale.snapshot().tier, 'free');
+    assert.equal(stale.snapshot().state, 'expired');
+    assert.equal(stale.can('conditionalLogic'), false);
+
     const dedupedValidation = deferred<typeof VALID_PRO>();
     const deduped = create(
       'raw-deduped-license-key',
@@ -174,6 +245,14 @@ void (async () => {
     assert.strictEqual(first, second);
     dedupedValidation.resolve(VALID_PRO);
     await first;
+
+    const wrapped = coreLicenseService({ strapi: inMemoryStrapi() });
+    await wrapped.init();
+    const wrappedFirst = wrapped.refresh();
+    const wrappedSecond = wrapped.refresh();
+    assert.strictEqual(wrappedFirst, wrappedSecond);
+    await wrappedFirst;
+    wrapped.destroy();
 
     console.log('All assertions passed: license lifecycle resolution and refresh de-duplication.');
   } finally {

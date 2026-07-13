@@ -128,7 +128,14 @@ export function createLicenseService(
     });
   }
 
+  function hasUsableCache(now: Date): boolean {
+    return _cache !== null && now <= _cache.graceUntil;
+  }
+
   function can(feature: FeatureKey): boolean {
+    if (FEATURE_TIER[feature] !== 'free' && !hasUsableCache(dependencies.now())) {
+      return false;
+    }
     return TIER_RANK[_tier] >= TIER_RANK[FEATURE_TIER[feature]];
   }
 
@@ -209,29 +216,26 @@ export function createLicenseService(
       // grace window keeps counting from the last successful validation.
       if (result.status === 'error') {
         const now = dependencies.now();
-        if (_cache !== null) {
-          if (now <= _cache.graceUntil) {
-            _tier = _cache.tier;
-            _state = 'grace';
-            _resolution = 'resolved';
-            strapi.log.info(
-              '[FormFlow License] Validation unreachable — serving cached entitlement within grace period.'
+        if (hasUsableCache(now)) {
+          _tier = _cache!.tier;
+          _state = 'grace';
+          _resolution = 'resolved';
+          strapi.log.info(
+            '[FormFlow License] Validation unreachable — serving cached entitlement within grace period.'
+          );
+        } else {
+          _tier = 'free';
+          _state = _cache === null ? 'free' : 'expired';
+          _resolution = 'unavailable';
+          if (_cache === null) {
+            strapi.log.warn(
+              '[FormFlow License] Validation unreachable and no prior cache — running as free tier.'
             );
           } else {
-            _tier = 'free';
-            _state = 'expired';
-            _resolution = 'unavailable';
             strapi.log.warn(
               '[FormFlow License] Validation unreachable and grace period elapsed — entitlements expired.'
             );
           }
-        } else {
-          _tier = 'free';
-          _state = 'free';
-          _resolution = 'unavailable';
-          strapi.log.warn(
-            '[FormFlow License] Validation unreachable and no prior cache — running as free tier.'
-          );
         }
         reachedTerminalResult = true;
         return;
@@ -283,7 +287,15 @@ export function createLicenseService(
     } catch (error) {
       if (!reachedTerminalResult) {
         const now = dependencies.now();
-        _resolution = _cache !== null && now <= _cache.graceUntil ? 'resolved' : 'unavailable';
+        if (hasUsableCache(now)) {
+          _tier = _cache!.tier;
+          _state = 'grace';
+          _resolution = 'resolved';
+        } else {
+          _tier = 'free';
+          _state = _cache === null ? 'free' : 'expired';
+          _resolution = 'unavailable';
+        }
       }
       strapi.log.warn('[FormFlow License] Unexpected error during refresh:', error);
     }
@@ -292,7 +304,7 @@ export function createLicenseService(
   function refresh(): Promise<void> {
     if (_refreshInFlight) return _refreshInFlight;
 
-    if (readLicenseKey() && _cache === null) {
+    if (readLicenseKey() && !hasUsableCache(dependencies.now())) {
       _resolution = 'checking';
     }
 
@@ -379,9 +391,9 @@ export function createLicenseService(
       // within the grace window we serve the cached tier; once it has elapsed we
       // grant nothing. The async refresh() still runs and corrects/hard-expires
       // shortly after — it remains the authority.
+      const now = dependencies.now();
       if (_cache !== null) {
-        const now = dependencies.now();
-        if (now <= _cache.graceUntil) {
+        if (hasUsableCache(now)) {
           _tier = _cache.tier;
           // 'active' while the license's own validity still holds; otherwise we are
           // running on connectivity grace. A hard-expired cache has tier 'free' and
@@ -394,7 +406,7 @@ export function createLicenseService(
       }
 
       // Fire-and-forget the first validation so plugin load is never blocked.
-      _resolution = _cache ? 'resolved' : 'checking';
+      _resolution = hasUsableCache(now) ? 'resolved' : 'checking';
       _initialResolution = refresh();
 
       // Re-validate daily to pick up revocations and tier changes.
@@ -408,7 +420,15 @@ export function createLicenseService(
       _refreshTimer.unref?.();
     } catch (error) {
       const now = dependencies.now();
-      _resolution = _cache !== null && now <= _cache.graceUntil ? 'resolved' : 'unavailable';
+      if (hasUsableCache(now)) {
+        _tier = _cache!.tier;
+        _state = 'grace';
+        _resolution = 'resolved';
+      } else {
+        _tier = 'free';
+        _state = _cache === null ? 'free' : 'expired';
+        _resolution = 'unavailable';
+      }
       _initialResolution = Promise.resolve();
       strapi.log.warn('[FormFlow License] init failed:', error);
     }
