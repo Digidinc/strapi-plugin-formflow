@@ -65,8 +65,8 @@ function parseDate(value: string | null | undefined): Date | null {
  * license grace logic depends on:
  *   - `ok`: a 2xx response with a parsed JSON body.
  *   - `client-error`: a definitive 4xx response — Lemon Squeezy was reachable and
- *     is telling us the key/instance is invalid/not-found/disabled. NOT a
- *     connectivity failure: callers must treat this as a hard, definitive answer.
+ *     is telling us the key/instance is invalid/not-found/disabled. Request timeout
+ *     and rate-limit responses are transient and therefore excluded.
  *   - `connectivity`: a thrown fetch error, timeout/abort, 5xx server error, or
  *     a JSON parse failure — we could not get a definitive answer.
  */
@@ -107,10 +107,15 @@ async function morFetch(url: string, body: Record<string, unknown>): Promise<Mor
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.warn(`[FormFlow License] License API request to ${url} returned HTTP ${response.status}`);
-      // A 4xx is a DEFINITIVE answer from a reachable API (key/instance invalid,
-      // not found, disabled). A 5xx is a transient server-side failure and is
-      // treated as connectivity loss so it never nukes a valid entitlement.
+      console.warn(
+        `[FormFlow License] License API request to ${url} returned HTTP ${response.status}`
+      );
+      // Most 4xx responses are definitive key/instance rejections. HTTP 408 and
+      // 429 are transient transport/capacity responses, just like a 5xx, and must
+      // preserve any valid cached entitlement rather than hard-expire it.
+      if (response.status === 408 || response.status === 429) {
+        return { kind: 'connectivity' };
+      }
       if (response.status >= 400 && response.status < 500) {
         return { kind: 'client-error', httpStatus: response.status };
       }

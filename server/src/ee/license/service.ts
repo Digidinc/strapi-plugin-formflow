@@ -447,11 +447,28 @@ export function createLicenseService(
     }
   }
 
-  function snapshot(): LicenseSnapshot {
+  function effectiveState(): Pick<LicenseSnapshot, 'tier' | 'state' | 'resolution'> {
+    const graceElapsed =
+      _tier !== 'free' &&
+      _cache !== null &&
+      _cache.tier !== 'free' &&
+      !hasUsableCache(dependencies.now());
+
+    if (!graceElapsed) {
+      return { tier: _tier, state: _state, resolution: _resolution };
+    }
+
     return {
-      tier: _tier,
-      state: _state,
-      resolution: _resolution,
+      tier: 'free',
+      state: 'expired',
+      resolution: _resolution === 'checking' ? 'checking' : 'unavailable',
+    };
+  }
+
+  function snapshot(): LicenseSnapshot {
+    const effective = effectiveState();
+    return {
+      ...effective,
       graceUntil: _cache?.graceUntil ?? null,
       features: Object.fromEntries(
         (Object.keys(FEATURE_TIER) as FeatureKey[]).map((f) => [f, can(f)])
@@ -465,9 +482,9 @@ export function createLicenseService(
     refresh,
     startFallbackScheduler,
     whenReady: () => _initialResolution,
-    resolution: () => _resolution,
-    tier: () => _tier,
-    state: () => _state,
+    resolution: () => effectiveState().resolution,
+    tier: () => effectiveState().tier,
+    state: () => effectiveState().state,
     can,
     snapshot,
   };

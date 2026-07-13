@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import destroyPlugin from '../../destroy';
 import premiumJobsService, { RETENTION_CRON_NAME } from '../premium-jobs';
 
 interface CronEntry {
@@ -9,7 +10,17 @@ interface CronEntry {
 
 const SCHEDULED_EXPORT_CRON_NAME = 'formflow_scheduled_export_form-1';
 
-function createHarness() {
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((fulfill) => {
+    resolve = fulfill;
+  });
+  return { promise, resolve };
+}
+
+function createHarness(
+  options: { firstFormLookup?: Promise<void>; lookupStarted?: () => void } = {}
+) {
   const crons = new Map<string, CronEntry>();
   const addCounts = new Map<string, number>();
   const storedConfigs = new Map<string, unknown>([
@@ -37,6 +48,7 @@ function createHarness() {
   let deleteOlderThanCalls = 0;
   let exportCalls = 0;
   let emailCalls = 0;
+  let formLookupCount = 0;
 
   const services = {
     license,
@@ -92,6 +104,11 @@ function createHarness() {
     documents() {
       return {
         async findMany() {
+          formLookupCount += 1;
+          if (formLookupCount === 1 && options.firstFormLookup) {
+            options.lookupStarted?.();
+            await options.firstFormLookup;
+          }
           return [{ documentId: 'form-1' }];
         },
       };
@@ -176,6 +193,93 @@ void (async () => {
   await jobs.removeAll();
   assert.equal(crons.has(RETENTION_CRON_NAME), false);
   assert.equal(crons.has(SCHEDULED_EXPORT_CRON_NAME), false);
+
+  const retentionAddsAtDestroy = addCountFor(RETENTION_CRON_NAME);
+  const exportAddsAtDestroy = addCountFor(SCHEDULED_EXPORT_CRON_NAME);
+  await jobs.reconcile();
+  assert.equal(
+    addCountFor(RETENTION_CRON_NAME),
+    retentionAddsAtDestroy,
+    'a late whenReady continuation cannot re-register retention after teardown'
+  );
+  assert.equal(
+    addCountFor(SCHEDULED_EXPORT_CRON_NAME),
+    exportAddsAtDestroy,
+    'a late whenReady continuation cannot re-register exports after teardown'
+  );
+
+  const destroyCalls: string[] = [];
+  await destroyPlugin({
+    strapi: {
+      cron: {
+        remove(name: string) {
+          destroyCalls.push(`cron:${name}`);
+        },
+      },
+      plugin() {
+        return {
+          service(name: string) {
+            if (name === 'premium-jobs') {
+              return {
+                async removeAll() {
+                  destroyCalls.push('premium-jobs.removeAll');
+                },
+              };
+            }
+            return {
+              destroy() {
+                destroyCalls.push('license.destroy');
+              },
+            };
+          },
+        };
+      },
+      store() {
+        return {
+          async get() {
+            return null;
+          },
+        };
+      },
+      documents() {
+        return {
+          async findMany() {
+            return [];
+          },
+        };
+      },
+      log: { error(..._args: unknown[]) {} },
+    } as any,
+  });
+  assert.ok(
+    destroyCalls.includes('premium-jobs.removeAll'),
+    'plugin destroy delegates premium job teardown to the lifecycle owner'
+  );
+
+  const continueLookup = deferred();
+  const lookupStarted = deferred();
+  const racing = createHarness({
+    firstFormLookup: continueLookup.promise,
+    lookupStarted: () => lookupStarted.resolve(),
+  });
+  racing.license.allowExports = true;
+  const inFlightReconcile = racing.jobs.reconcile();
+  await lookupStarted.promise;
+  let removalSettled = false;
+  const concurrentRemoval = racing.jobs.removeAll().then(() => {
+    removalSettled = true;
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(
+    removalSettled,
+    false,
+    'teardown waits for an in-flight reconciliation before final cleanup'
+  );
+  continueLookup.resolve();
+  await Promise.all([inFlightReconcile, concurrentRemoval]);
+  assert.equal(racing.crons.has(RETENTION_CRON_NAME), false);
+  assert.equal(racing.crons.has(SCHEDULED_EXPORT_CRON_NAME), false);
 
   console.log('All assertions passed: premium jobs follow settled entitlement.');
 })();

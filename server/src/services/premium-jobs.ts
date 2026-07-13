@@ -19,6 +19,8 @@ interface ScheduledExportConfig {
 const premiumJobsService = ({ strapi }: { strapi: Core.Strapi }): PremiumJobsService => {
   const scheduledExportFormIds = new Set<string>();
   let hadAdvancedExportEntitlement = false;
+  let stopped = false;
+  let reconcileInFlight: Promise<void> | null = null;
 
   const removeCron = (name: string): void => {
     if (strapi.cron && typeof strapi.cron.remove === 'function') {
@@ -148,22 +150,36 @@ const premiumJobsService = ({ strapi }: { strapi: Core.Strapi }): PremiumJobsSer
     }
   };
 
-  return {
-    async reconcile(): Promise<void> {
-      try {
-        await reconcileRetention();
-      } catch (error) {
-        strapi.log.error('[FormFlow] Failed to reconcile data retention:', error);
-      }
+  const performReconcile = async (): Promise<void> => {
+    try {
+      await reconcileRetention();
+    } catch (error) {
+      strapi.log.error('[FormFlow] Failed to reconcile data retention:', error);
+    }
 
-      try {
-        await reconcileScheduledExports();
-      } catch (error) {
-        strapi.log.error('[FormFlow] Failed to reconcile scheduled exports:', error);
-      }
+    try {
+      await reconcileScheduledExports();
+    } catch (error) {
+      strapi.log.error('[FormFlow] Failed to reconcile scheduled exports:', error);
+    }
+  };
+
+  return {
+    reconcile(): Promise<void> {
+      if (stopped) return Promise.resolve();
+      if (reconcileInFlight) return reconcileInFlight;
+
+      const request = performReconcile().finally(() => {
+        if (reconcileInFlight === request) reconcileInFlight = null;
+      });
+      reconcileInFlight = request;
+      return request;
     },
 
     async removeAll(): Promise<void> {
+      stopped = true;
+      await reconcileInFlight;
+
       try {
         removeCron(RETENTION_CRON_NAME);
       } catch (error) {

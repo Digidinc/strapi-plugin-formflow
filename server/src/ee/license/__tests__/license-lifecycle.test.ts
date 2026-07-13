@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import licenseController from '../../../controllers/license';
 import adminRoutes from '../../../routes/admin';
 import coreLicenseService from '../../../services/license';
+import { validate as validateMorLicense } from '../mor-client';
 import { createLicenseService, type LicenseDependencies, type LicenseService } from '../service';
 
 const NOW = new Date('2026-02-01T00:00:00.000Z');
@@ -49,14 +50,18 @@ function dependencies(overrides: Partial<LicenseDependencies> = {}): LicenseDepe
   };
 }
 
-function inMemoryStrapi(licenseKey = '', seed: Record<string, unknown> = {}) {
+function inMemoryStrapi(
+  licenseKey: string | (() => string) = '',
+  seed: Record<string, unknown> = {}
+) {
   const values = new Map<string, unknown>(Object.entries(seed));
 
   const strapi = {
     config: {
       get(key: string, fallback: unknown) {
         if (key === 'plugin::formflow') {
-          return licenseKey ? { license: { key: licenseKey } } : {};
+          const currentLicenseKey = typeof licenseKey === 'function' ? licenseKey() : licenseKey;
+          return currentLicenseKey ? { license: { key: currentLicenseKey } } : {};
         }
         return fallback;
       },
@@ -228,7 +233,18 @@ void (async () => {
 
     staleNow = new Date('2026-02-16T00:00:00.000Z');
     assert.equal(stale.can('conditionalLogic'), false);
-    assert.equal(stale.snapshot().features.conditionalLogic, false);
+    const elapsedGraceSnapshot = stale.snapshot();
+    assert.equal(elapsedGraceSnapshot.features.conditionalLogic, false);
+    assert.equal(
+      elapsedGraceSnapshot.resolution,
+      'unavailable',
+      'elapsed connectivity grace is unverified, not confirmed unentitled'
+    );
+    assert.equal(elapsedGraceSnapshot.tier, 'free');
+    assert.equal(elapsedGraceSnapshot.state, 'expired');
+    assert.equal(stale.resolution(), 'unavailable');
+    assert.equal(stale.tier(), 'free');
+    assert.equal(stale.state(), 'expired');
     const staleRefresh = stale.refresh();
     assert.equal(stale.snapshot().resolution, 'checking');
     await staleRefresh;
@@ -236,6 +252,32 @@ void (async () => {
     assert.equal(stale.snapshot().tier, 'free');
     assert.equal(stale.snapshot().state, 'expired');
     assert.equal(stale.can('conditionalLogic'), false);
+
+    let removableKey = 'raw-removable-license-key';
+    let removalNow = new Date(NOW);
+    const removable = createLicenseService(
+      inMemoryStrapi(() => removableKey, {
+        'license-key-hash': createHash('sha256').update(removableKey).digest('hex'),
+        'license-cache': {
+          tier: 'pro',
+          status: 'active',
+          validUntil: '2026-01-15T00:00:00.000Z',
+          lastValidatedAt: '2026-01-01T00:00:00.000Z',
+          graceUntil: '2026-02-15T00:00:00.000Z',
+        },
+      }),
+      dependencies({ now: () => new Date(removalNow), validate: async () => UNREACHABLE })
+    );
+    services.push(removable);
+    await removable.init();
+    await removable.whenReady();
+    assert.equal(removable.snapshot().tier, 'pro');
+    removableKey = '';
+    await removable.refresh();
+    removalNow = new Date('2026-02-16T00:00:00.000Z');
+    assert.equal(removable.snapshot().resolution, 'resolved');
+    assert.equal(removable.snapshot().tier, 'free');
+    assert.equal(removable.snapshot().state, 'free');
 
     const dedupedValidation = deferred<typeof VALID_PRO>();
     const deduped = create(
@@ -305,6 +347,24 @@ void (async () => {
     await refreshController.refresh?.(refreshContext);
     assert.deepEqual(callOrder, ['refresh', 'reconcile', 'snapshot']);
     assert.strictEqual(refreshContext.body, refreshedSnapshot);
+
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    try {
+      console.warn = () => {};
+      for (const status of [408, 429]) {
+        globalThis.fetch = async () => ({ ok: false, status }) as Response;
+        const transientResult = await validateMorLicense({ licenseKey: 'rate-limited-key' });
+        assert.equal(
+          transientResult.status,
+          'error',
+          `HTTP ${status} is transient and must preserve cached entitlement grace`
+        );
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+    }
 
     console.log('All assertions passed: license lifecycle resolution and refresh de-duplication.');
   } finally {

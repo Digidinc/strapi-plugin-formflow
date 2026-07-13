@@ -1,24 +1,18 @@
 import type { Core } from '@strapi/strapi';
 
-import { RETENTION_CRON_NAME, LICENSE_CRON_NAME, TELEMETRY_CRON_NAME } from './bootstrap';
+import { LICENSE_CRON_NAME, TELEMETRY_CRON_NAME } from './bootstrap';
 import { stopRateLimitCleanup } from './policies/rate-limit';
 
 const destroy = async ({ strapi }: { strapi: Core.Strapi }) => {
   // Clear the rate-limit cleanup timer started in bootstrap.
   stopRateLimitCleanup();
 
-  // Remove the data-retention cron job if it was registered. Guarded so teardown
-  // never throws when retention was disabled (no job to remove) or when the cron
-  // service is unavailable. `cron.remove` is a no-op for an unknown task name.
+  // Stop the premium-job lifecycle before the pending initial license resolution
+  // can reconcile again. The service owns retention and scheduled-export cleanup.
   try {
-    if (strapi.cron && typeof strapi.cron.remove === 'function') {
-      strapi.cron.remove(RETENTION_CRON_NAME);
-    }
+    await strapi.plugin('formflow').service('premium-jobs').removeAll();
   } catch (error) {
-    strapi.log.error(
-      '[FormFlow] Failed to remove the data-retention cron job:',
-      error
-    );
+    strapi.log.error('[FormFlow] Failed to remove premium jobs:', error);
   }
 
   // Remove the license refresh cron and clear any in-flight refresh timer.
@@ -27,10 +21,7 @@ const destroy = async ({ strapi }: { strapi: Core.Strapi }) => {
       strapi.cron.remove(LICENSE_CRON_NAME);
     }
   } catch (error) {
-    strapi.log.error(
-      '[FormFlow] Failed to remove the license refresh cron:',
-      error
-    );
+    strapi.log.error('[FormFlow] Failed to remove the license refresh cron:', error);
   }
 
   // Remove the telemetry heartbeat cron.
@@ -39,38 +30,7 @@ const destroy = async ({ strapi }: { strapi: Core.Strapi }) => {
       strapi.cron.remove(TELEMETRY_CRON_NAME);
     }
   } catch (error) {
-    strapi.log.error(
-      '[FormFlow] Failed to remove the telemetry heartbeat cron:',
-      error
-    );
-  }
-
-  // Remove any rehydrated scheduled-export crons so no timers leak on teardown.
-  // Candidate form ids are derived from the forms collection (mirroring the
-  // bootstrap rehydration) and each persisted config is cleared via the EE
-  // `removeScheduledExport`. Lazy guarded import + try/catch so teardown never
-  // throws when `ee/export` is stripped or the store/cron is unavailable.
-  try {
-    const { removeScheduledExport } = await import('./ee/export/index');
-
-    const store = strapi.store({ type: 'plugin', name: 'formflow' });
-    const forms = await strapi
-      .documents('plugin::formflow.form')
-      .findMany({ fields: ['documentId'] });
-
-    for (const form of forms) {
-      const config = await store.get({
-        key: `scheduled-export-${form.documentId}`,
-      });
-      if (config) {
-        await removeScheduledExport(strapi, form.documentId);
-      }
-    }
-  } catch (error) {
-    strapi.log.error(
-      '[FormFlow] Failed to remove scheduled-export crons:',
-      error
-    );
+    strapi.log.error('[FormFlow] Failed to remove the telemetry heartbeat cron:', error);
   }
 
   try {
