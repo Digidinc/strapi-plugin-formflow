@@ -5,6 +5,7 @@ import type { Core } from '@strapi/strapi';
  * stripped fork where the EE implementation is absent.
  */
 export type LicenseState = 'active' | 'grace' | 'expired' | 'free';
+export type LicenseResolution = 'checking' | 'resolved' | 'unavailable';
 
 /** Effective entitlement tier (collapsed to `free` when expired). */
 export type LicenseTier = 'free' | 'pro' | 'business';
@@ -17,6 +18,7 @@ export type LicenseTier = 'free' | 'pro' | 'business';
 export interface LicenseSnapshot {
   tier: LicenseTier;
   state: LicenseState;
+  resolution: LicenseResolution;
   graceUntil: string | null;
   features: Record<string, boolean>;
 }
@@ -25,6 +27,8 @@ export interface LicenseService {
   init(): Promise<void>;
   destroy(): void;
   refresh(): Promise<void>;
+  whenReady(): Promise<void>;
+  resolution(): LicenseResolution;
   can(feature: string): boolean;
   tier(): LicenseTier;
   state(): LicenseState;
@@ -40,12 +44,15 @@ interface EeLicenseInstance {
   init(): Promise<void>;
   destroy(): void;
   refresh(): Promise<void>;
+  whenReady(): Promise<void>;
+  resolution(): LicenseResolution;
   can(feature: string): boolean;
   tier(): LicenseTier;
   state(): LicenseState;
   snapshot(): {
     tier: LicenseTier;
     state: LicenseState;
+    resolution: LicenseResolution;
     graceUntil: Date | null;
     features: Record<string, boolean>;
   };
@@ -54,6 +61,7 @@ interface EeLicenseInstance {
 const FREE_SNAPSHOT: LicenseSnapshot = {
   tier: 'free',
   state: 'free',
+  resolution: 'resolved',
   graceUntil: null,
   features: {},
 };
@@ -96,6 +104,14 @@ const licenseService = ({ strapi }: { strapi: Core.Strapi }): LicenseService => 
       if (eeImpl) await eeImpl.refresh();
     },
 
+    whenReady(): Promise<void> {
+      return eeImpl ? eeImpl.whenReady() : Promise.resolve();
+    },
+
+    resolution(): LicenseResolution {
+      return eeImpl ? eeImpl.resolution() : 'resolved';
+    },
+
     can(feature: string): boolean {
       return eeImpl ? eeImpl.can(feature) : false;
     },
@@ -114,7 +130,9 @@ const licenseService = ({ strapi }: { strapi: Core.Strapi }): LicenseService => 
       return {
         tier: snap.tier,
         state: snap.state,
-        graceUntil: snap.graceUntil instanceof Date ? snap.graceUntil.toISOString() : snap.graceUntil,
+        resolution: snap.resolution,
+        graceUntil:
+          snap.graceUntil instanceof Date ? snap.graceUntil.toISOString() : snap.graceUntil,
         features: snap.features,
       };
     },
