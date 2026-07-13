@@ -366,6 +366,47 @@ void (async () => {
       console.warn = originalWarn;
     }
 
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalError = console.error;
+    let bodyTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      console.error = () => {};
+      globalThis.setTimeout = ((
+        callback: (...args: unknown[]) => void,
+        _delay?: number,
+        ...args: unknown[]
+      ) => originalSetTimeout(callback, 5, ...args)) as typeof globalThis.setTimeout;
+      globalThis.fetch = async (_input, init) =>
+        ({
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener(
+                'abort',
+                () => reject(new Error('body read aborted')),
+                { once: true }
+              );
+            }),
+        }) as Response;
+
+      const stalledBodyResult = await Promise.race([
+        validateMorLicense({ licenseKey: 'stalled-body-key' }),
+        new Promise<never>((_resolve, reject) => {
+          bodyTimeoutId = originalSetTimeout(
+            () => reject(new Error('license response body was not aborted')),
+            100
+          );
+        }),
+      ]);
+      assert.equal(stalledBodyResult.status, 'error');
+    } finally {
+      if (bodyTimeoutId !== undefined) clearTimeout(bodyTimeoutId);
+      globalThis.fetch = originalFetch;
+      globalThis.setTimeout = originalSetTimeout;
+      console.error = originalError;
+    }
+
     console.log('All assertions passed: license lifecycle resolution and refresh de-duplication.');
   } finally {
     for (const service of services) service.destroy();

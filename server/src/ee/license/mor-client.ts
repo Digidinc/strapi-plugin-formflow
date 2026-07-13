@@ -104,8 +104,6 @@ async function morFetch(url: string, body: Record<string, unknown>): Promise<Mor
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) {
       console.warn(
         `[FormFlow License] License API request to ${url} returned HTTP ${response.status}`
@@ -124,9 +122,10 @@ async function morFetch(url: string, body: Record<string, unknown>): Promise<Mor
 
     return { kind: 'ok', json: await response.json() };
   } catch (error) {
-    clearTimeout(timeoutId);
     console.error(`[FormFlow License] License API request to ${url} failed:`, error);
     return { kind: 'connectivity' };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
