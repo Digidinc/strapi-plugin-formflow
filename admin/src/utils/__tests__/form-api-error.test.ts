@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { FEATURE_TIER } from '../../ee/feature-map';
+import { FEATURE_TIER as SERVER_FEATURE_TIER } from '../../../../server/src/ee/feature-map';
 import {
   classifyFormApiError,
+  paymentRequiredResolution,
   paymentRequiredCopy,
   safeUpgradeUrl,
   toFormApiError,
@@ -23,12 +25,24 @@ assert.equal(classifyFormApiError(makeError(400, {})), 'validation');
 
 const paymentDetails: FormApiErrorDetails = {
   feature: 'conditionalLogic',
+  requiredTier: 'pro',
   upgradeUrl: 'https://example.com/pricing',
+  resolution: 'resolved',
 };
 const paymentError = makeError(402, paymentDetails);
 assert.equal(classifyFormApiError(paymentError), 'payment_required');
 assert.notEqual(classifyFormApiError(paymentError), 'validation');
 assert.equal(paymentError.details, paymentDetails);
+assert.deepEqual(FEATURE_TIER, SERVER_FEATURE_TIER);
+assert.equal(paymentRequiredResolution(paymentDetails), 'resolved');
+assert.equal(paymentRequiredResolution({ resolution: 'checking' }), 'checking');
+assert.equal(paymentRequiredResolution({ resolution: 'unavailable' }), 'unavailable');
+assert.equal(paymentRequiredResolution(undefined), null);
+assert.equal(paymentRequiredResolution({}), null);
+assert.equal(
+  paymentRequiredResolution({ resolution: 'free' } as unknown as FormApiErrorDetails),
+  null
+);
 
 const futureFeatureDetails: FormApiErrorDetails = { feature: 'future.server.feature' };
 assert.equal(classifyFormApiError(makeError(402, futureFeatureDetails)), 'payment_required');
@@ -111,7 +125,9 @@ const normalized = toFormApiError(
           message: 'Conditional configuration is invalid.',
           details: {
             feature: 'conditionalLogic',
+            requiredTier: 'pro',
             upgradeUrl: 'https://example.com/pricing',
+            resolution: 'resolved',
             conditionalIssues,
           },
         },
@@ -125,7 +141,9 @@ assert.equal(normalized.message, 'Conditional configuration is invalid.');
 assert.equal(normalized.status, 400);
 assert.deepEqual(normalized.details, {
   feature: 'conditionalLogic',
+  requiredTier: 'pro',
   upgradeUrl: 'https://example.com/pricing',
+  resolution: 'resolved',
   conditionalIssues,
 });
 assert.equal(classifyFormApiError(normalized), 'validation');
@@ -198,6 +216,10 @@ assert.match(formEditSource, /loading=\{savePending\}/);
 assert.match(formEditSource, /disabled=\{savePending \|\|/);
 assert.match(saveHandlerSource, /const kind = classifyFormApiError\(apiErr\)/);
 assert.match(saveHandlerSource, /kind === ['"]payment_required['"]/);
+assert.match(
+  saveHandlerSource,
+  /const authoritativeResolution = paymentRequiredResolution\(details\)/
+);
 assert.match(saveHandlerSource, /await refreshLicense\(\)/);
 assert.match(saveHandlerSource, /type: ['"]info['"]/);
 assert.match(saveHandlerSource, /form\.save\.paymentRequired/);
@@ -217,7 +239,14 @@ assert.match(saveHandlerSource, /issue\.fieldName/);
 assert.match(saveHandlerSource, /issue\.message/);
 
 const paymentBranchIndex = saveHandlerSource.indexOf("kind === 'payment_required'");
+const authoritativeResolutionIndex = saveHandlerSource.indexOf(
+  'const authoritativeResolution = paymentRequiredResolution(details)'
+);
 const refreshIndex = saveHandlerSource.indexOf('await refreshLicense()');
+const unknownResolutionStart = saveHandlerSource.indexOf(
+  "if (authoritativeResolution !== 'resolved')"
+);
+const resolvedCopyIndex = saveHandlerSource.indexOf('const copy = paymentRequiredCopy(details)');
 const infoNotificationIndex = saveHandlerSource.indexOf("type: 'info'", refreshIndex);
 const validationBranchIndex = saveHandlerSource.indexOf("kind === 'validation'");
 const conditionalIssuesIndex = saveHandlerSource.indexOf('const conditionalIssues');
@@ -226,7 +255,18 @@ const pendingLockIndex = saveHandlerSource.indexOf('isSavePendingRef.current = t
 const firstMutationIndex = saveHandlerSource.indexOf('await createForm');
 
 assert.ok(paymentBranchIndex >= 0 && paymentBranchIndex < refreshIndex);
+assert.ok(authoritativeResolutionIndex >= paymentBranchIndex);
 assert.ok(refreshIndex < infoNotificationIndex, 'the authoritative 402 refresh must settle first');
+assert.ok(refreshIndex < unknownResolutionStart);
+assert.ok(unknownResolutionStart < resolvedCopyIndex);
+const unknownResolutionBranch = saveHandlerSource.slice(unknownResolutionStart, resolvedCopyIndex);
+assert.match(unknownResolutionBranch, /form\.save\.paymentVerificationUnavailable/);
+assert.match(unknownResolutionBranch, /return;/);
+assert.doesNotMatch(
+  unknownResolutionBranch,
+  /paymentRequiredCopy|safeUpgradeUrl|license\.viewPlans/
+);
+assert.doesNotMatch(unknownResolutionBranch, /\blink\s*:/);
 assert.ok(
   validationBranchIndex >= 0 && validationBranchIndex < fieldMappingIndex,
   'only the explicit validation branch may map details onto fields'
@@ -251,6 +291,10 @@ assert.equal(
 assert.equal(
   translations['formflow.form.save.paymentRequired.known'],
   '{feature} requires a {tier} plan. Upgrade your plan or remove that premium configuration before saving.'
+);
+assert.equal(
+  translations['formflow.form.save.paymentVerificationUnavailable'],
+  'FormFlow could not verify premium access. Check the license status, then retry saving.'
 );
 assert.equal(translations['formflow.license.tier.pro'], 'Pro');
 assert.equal(translations['formflow.license.tier.business'], 'Business');

@@ -1,6 +1,7 @@
 import type { Core } from '@strapi/strapi';
 
 import type { FormField } from '../services/form';
+import type { LicenseResolution } from '../services/license';
 import {
   hasDuplicateProvidedFieldIds,
   newConditionalConfigIssues,
@@ -9,6 +10,7 @@ import {
 } from '../utils/conditional-config';
 import {
   findFormEntitlementBlock,
+  type FormEntitlementTier,
   type NewFormData,
   type OldForm,
 } from '../utils/form-entitlements';
@@ -87,14 +89,49 @@ const duplicateFieldIdsResponse = (ctx: Context) => {
   };
 };
 
-const paymentRequiredResponse = (ctx: Context, feature: string) => {
+export interface FormPaymentRequiredMetadata {
+  message: string;
+  requiredTier?: FormEntitlementTier;
+}
+
+export const formPaymentRequiredMetadata = (
+  feature: string,
+  requiredTier?: FormEntitlementTier
+): FormPaymentRequiredMetadata => {
+  if (requiredTier !== 'pro' && requiredTier !== 'business') {
+    return { message: `This feature is not available on the current plan: ${feature}` };
+  }
+
+  return {
+    message: `Upgrade to ${requiredTier === 'business' ? 'Business' : 'Pro'} to use feature: ${feature}`,
+    requiredTier,
+  };
+};
+
+const paymentRequiredResponse = (
+  ctx: Context,
+  feature: string,
+  requiredTier: FormEntitlementTier,
+  resolution: LicenseResolution
+) => {
+  const metadata = formPaymentRequiredMetadata(feature, requiredTier);
+  const canOfferUpgrade = resolution === 'resolved' && metadata.requiredTier !== undefined;
+  const message =
+    resolution === 'resolved'
+      ? metadata.message
+      : 'FormFlow could not verify premium access. Check the license status, then retry saving.';
   ctx.status = 402;
   return {
     error: {
       status: 402,
       name: 'PaymentRequired',
-      message: `Upgrade to Pro to use feature: ${feature}`,
-      details: { feature, upgradeUrl: UPGRADE_URL },
+      message,
+      details: {
+        feature,
+        resolution,
+        ...(metadata.requiredTier ? { requiredTier: metadata.requiredTier } : {}),
+        ...(canOfferUpgrade ? { upgradeUrl: UPGRADE_URL } : {}),
+      },
     },
   };
 };
@@ -224,7 +261,12 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     const entitlementBlock = findFormEntitlementBlock(null, newData, licenseCan(strapi));
     if (entitlementBlock) {
-      return paymentRequiredResponse(ctx, entitlementBlock.feature);
+      return paymentRequiredResponse(
+        ctx,
+        entitlementBlock.feature,
+        entitlementBlock.requiredTier,
+        strapi.plugin('formflow').service('license').resolution()
+      );
     }
 
     try {
@@ -283,7 +325,12 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
 
       const entitlementBlock = findFormEntitlementBlock(oldForm, newData, licenseCan(strapi));
       if (entitlementBlock) {
-        return paymentRequiredResponse(ctx, entitlementBlock.feature);
+        return paymentRequiredResponse(
+          ctx,
+          entitlementBlock.feature,
+          entitlementBlock.requiredTier,
+          strapi.plugin('formflow').service('license').resolution()
+        );
       }
 
       const form = await strapi.plugin('formflow').service('form').update(id, data);
@@ -359,7 +406,12 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
 
       const entitlementBlock = findFormEntitlementBlock(null, newData, licenseCan(strapi));
       if (entitlementBlock) {
-        return paymentRequiredResponse(ctx, entitlementBlock.feature);
+        return paymentRequiredResponse(
+          ctx,
+          entitlementBlock.feature,
+          entitlementBlock.requiredTier,
+          strapi.plugin('formflow').service('license').resolution()
+        );
       }
 
       const form = await formService.create(proposedDuplicate);

@@ -1,4 +1,5 @@
 import { FEATURE_TIER, type FeatureKey, type Tier } from '../ee/feature-map';
+import type { LicenseResolution } from '../ee/license-state';
 
 export type FormApiErrorKind = 'validation' | 'payment_required' | 'other';
 
@@ -36,7 +37,9 @@ export interface ConditionalConfigIssueDetails {
 
 export interface FormApiErrorDetails {
   feature?: string;
+  requiredTier?: Exclude<Tier, 'free'>;
   upgradeUrl?: string;
+  resolution?: LicenseResolution;
   conditionalIssues?: ConditionalConfigIssueDetails[];
   [key: string]: unknown;
 }
@@ -79,6 +82,14 @@ export function classifyFormApiError(error: FormApiError): FormApiErrorKind {
   if (error.status === 400) return 'validation';
   if (error.status === 402) return 'payment_required';
   return 'other';
+}
+
+/** Accept only authoritative resolution values from a structured server response. */
+export function paymentRequiredResolution(details?: FormApiErrorDetails): LicenseResolution | null {
+  const resolution = details?.resolution;
+  return resolution === 'checking' || resolution === 'resolved' || resolution === 'unavailable'
+    ? resolution
+    : null;
 }
 
 /** Select feature-specific copy only for server feature values known by this client. */

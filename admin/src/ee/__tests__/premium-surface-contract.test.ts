@@ -254,11 +254,23 @@ requirePattern(
   /feature=['"]webhooks['"][\s\S]*?<\/LockedSection>[\s\S]*?webhooksAccess\s*!==\s*['"]entitled['"][\s\S]*?removeWebhook\([\s\S]*?disabled=\{!webhooksPolicy\.canRemove\}/,
   'webhook cleanup must be outside the locked ancestor and policy-disabled while unresolved'
 );
+const testWebhookHandler = webhookSource.slice(
+  webhookSource.indexOf('const handleTestWebhook'),
+  webhookSource.indexOf('\n  return (', webhookSource.indexOf('const handleTestWebhook'))
+);
 requirePattern(
   WEBHOOK_SETTINGS,
-  webhookSource,
-  /if\s*\(\s*await\s+refreshLicenseOnPaymentRequired\(\s*err\s*,\s*refresh\s*\)\s*\)[\s\S]*?notifications\.webhook\.test\.upsell/,
-  'test-webhook 402 handling must refresh license state before showing the existing info outcome'
+  testWebhookHandler,
+  /if\s*\(\s*await\s+refreshLicenseOnPaymentRequired\(\s*err\s*,\s*refresh\s*\)\s*\)\s*\{\s*return;\s*\}/,
+  'test-webhook 402 handling must await the license refresh and return to refreshed access UI'
+);
+violations.push(
+  ...findMatches(
+    WEBHOOK_SETTINGS,
+    testWebhookHandler,
+    /notifications\.webhook\.test\.upsell/g,
+    'test-webhook 402 handling must not make a stale post-refresh Pro upgrade claim'
+  )
 );
 requirePattern(
   WEBHOOK_SETTINGS,

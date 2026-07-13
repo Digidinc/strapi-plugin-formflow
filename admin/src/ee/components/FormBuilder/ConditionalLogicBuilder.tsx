@@ -2,6 +2,7 @@
 import * as React from 'react';
 import {
   Box,
+  Button,
   Checkbox,
   Field,
   Flex,
@@ -234,6 +235,15 @@ export const ConditionalLogicBuilder = ({
     />
   ) : null;
 
+  const removeRuleButton = (
+    <Button type="button" size="S" variant="danger-light" onClick={() => onChange(undefined)}>
+      {formatMessage({
+        id: getTranslation('fieldEditor.conditional.remove'),
+        defaultMessage: 'Remove conditional rule',
+      })}
+    </Button>
+  );
+
   let body: React.ReactNode;
   switch (bodyState) {
     case 'checking':
@@ -263,12 +273,18 @@ export const ConditionalLogicBuilder = ({
               lockCopy={readOnlyCopy}
             />
           ) : null}
+          {removeRuleButton}
           {viewPlansLink}
         </Flex>
       );
       break;
     case 'dangling-readonly':
-      body = summary;
+      body = (
+        <Flex direction="column" gap={3} alignItems="flex-start">
+          {summary}
+          {removeRuleButton}
+        </Flex>
+      );
       break;
     case 'repair-rule':
       body = (

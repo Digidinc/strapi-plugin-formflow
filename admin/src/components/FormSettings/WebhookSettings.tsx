@@ -307,8 +307,8 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
   /**
    * Fire a one-off test request for a single webhook against the server's
    * `POST /forms/:formId/webhooks/test` endpoint. The server enforces the Pro
-   * gate authoritatively (402 + upsell when not entitled); the client surfaces
-   * the outcome as a notification.
+   * gate authoritatively. A 402 refreshes the shared license UI, which then
+   * presents the resolved, unavailable, or recovered state truthfully.
    */
   const handleTestWebhook = async (index: number) => {
     try {
@@ -322,13 +322,6 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
       });
     } catch (err) {
       if (await refreshLicenseOnPaymentRequired(err, refresh)) {
-        toggleNotification({
-          type: 'info',
-          message: formatMessage({
-            id: getTranslation('notifications.webhook.test.upsell'),
-            defaultMessage: 'Webhooks require a FormFlow Pro license.',
-          }),
-        });
         return;
       }
 

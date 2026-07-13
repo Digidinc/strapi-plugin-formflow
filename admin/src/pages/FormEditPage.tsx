@@ -28,6 +28,7 @@ import { useIntl } from 'react-intl';
 import { getTranslation } from '../utils/getTranslation';
 import {
   classifyFormApiError,
+  paymentRequiredResolution,
   paymentRequiredCopy,
   safeUpgradeUrl,
   type FormApiError,
@@ -365,10 +366,23 @@ export const FormEditPage = () => {
       const kind = classifyFormApiError(apiErr);
 
       if (kind === 'payment_required') {
-        const copy = paymentRequiredCopy(details);
-        const upgradeUrl = safeUpgradeUrl(details?.upgradeUrl);
+        const authoritativeResolution = paymentRequiredResolution(details);
         await refreshLicense();
 
+        if (authoritativeResolution !== 'resolved') {
+          toggleNotification({
+            type: 'info',
+            message: formatMessage({
+              id: getTranslation('form.save.paymentVerificationUnavailable'),
+              defaultMessage:
+                'FormFlow could not verify premium access. Check the license status, then retry saving.',
+            }),
+          });
+          return;
+        }
+
+        const copy = paymentRequiredCopy(details);
+        const upgradeUrl = safeUpgradeUrl(details?.upgradeUrl);
         const paymentMessage =
           copy.kind === 'known'
             ? formatMessage(

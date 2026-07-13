@@ -123,6 +123,16 @@ export function premiumMutationPolicy(access: FeatureAccess): PremiumMutationPol
   };
 }
 
+/** Keep confirmed access stable while a replacement snapshot is being fetched. */
+export function refreshStartResolution(current: LicenseResolution): LicenseResolution {
+  return current === 'resolved' ? 'resolved' : 'checking';
+}
+
+/** Retain last-known confirmed access when only its replacement request fails. */
+export function refreshFailureResolution(current: LicenseResolution): LicenseResolution {
+  return current === 'resolved' ? 'resolved' : 'unavailable';
+}
+
 export function retryDelay(attempt: number): number {
   return Math.min(250 * 2 ** Math.max(0, attempt), 1000);
 }

@@ -3,6 +3,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 
+import licenseController from '../../../controllers/license';
+import adminRoutes from '../../../routes/admin';
 import coreLicenseService from '../../../services/license';
 import { createLicenseService, type LicenseDependencies, type LicenseService } from '../service';
 
@@ -253,6 +255,56 @@ void (async () => {
     assert.strictEqual(wrappedFirst, wrappedSecond);
     await wrappedFirst;
     wrapped.destroy();
+
+    const refreshRoute = adminRoutes.routes.find(
+      (route) => route.method === 'POST' && route.path === '/license/refresh'
+    );
+    assert.ok(refreshRoute, 'admin routes must expose POST /license/refresh');
+    assert.equal(refreshRoute.handler, 'license.refresh');
+    assert.deepEqual(refreshRoute.config.policies, ['admin::isAuthenticatedAdmin']);
+
+    const callOrder: string[] = [];
+    const refreshedSnapshot = {
+      tier: 'pro',
+      state: 'active',
+      resolution: 'resolved',
+      graceUntil: '2026-02-15T00:00:00.000Z',
+      features: { conditionalLogic: true },
+    };
+    const controllerServices = {
+      license: {
+        async refresh() {
+          callOrder.push('refresh');
+        },
+        snapshot() {
+          callOrder.push('snapshot');
+          return refreshedSnapshot;
+        },
+      },
+      'premium-jobs': {
+        async reconcile() {
+          callOrder.push('reconcile');
+        },
+      },
+    };
+    const refreshController = licenseController({
+      strapi: {
+        plugin() {
+          return {
+            service(name: keyof typeof controllerServices) {
+              return controllerServices[name];
+            },
+          };
+        },
+      } as any,
+    }) as ReturnType<typeof licenseController> & {
+      refresh?: (ctx: { body: unknown }) => Promise<void>;
+    };
+    assert.equal(typeof refreshController.refresh, 'function');
+    const refreshContext = { body: null as unknown };
+    await refreshController.refresh?.(refreshContext);
+    assert.deepEqual(callOrder, ['refresh', 'reconcile', 'snapshot']);
+    assert.strictEqual(refreshContext.body, refreshedSnapshot);
 
     console.log('All assertions passed: license lifecycle resolution and refresh de-duplication.');
   } finally {

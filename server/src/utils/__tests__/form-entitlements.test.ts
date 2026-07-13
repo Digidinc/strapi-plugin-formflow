@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
-import formController, { type Context } from '../../controllers/form';
+import formController, { formPaymentRequiredMetadata, type Context } from '../../controllers/form';
+import { FEATURE_TIER, type FeatureKey } from '../../ee/feature-map';
 import formService, { type FormField } from '../../services/form';
 import { findFormEntitlementBlock, type NewFormData, type OldForm } from '../form-entitlements';
 
@@ -53,15 +56,40 @@ const missingIdConditionalFields = [missingIdConditionalSource, missingIdConditi
 const denyAll = () => false;
 const allowAll = () => true;
 
+assert.deepEqual(formPaymentRequiredMetadata('conditionalLogic', 'pro'), {
+  message: 'Upgrade to Pro to use feature: conditionalLogic',
+  requiredTier: 'pro',
+});
+assert.deepEqual(formPaymentRequiredMetadata('compliance.consent', 'business'), {
+  message: 'Upgrade to Business to use feature: compliance.consent',
+  requiredTier: 'business',
+});
+assert.deepEqual(formPaymentRequiredMetadata('future.form.feature'), {
+  message: 'This feature is not available on the current plan: future.form.feature',
+});
+
+const formControllerSource = readFileSync(
+  path.join(process.cwd(), 'server/src/controllers/form.ts'),
+  'utf8'
+);
+assert.doesNotMatch(
+  formControllerSource,
+  /(?:import|require)[\s\S]*?['"]\.\.\/ee\//,
+  'the core form controller must not runtime-import the removable EE tree'
+);
+
 const expectBlock = (
   oldForm: OldForm | null,
   newData: NewFormData,
   feature: string,
   can: (feature: string) => boolean = denyAll
 ) => {
+  const requiredTier = FEATURE_TIER[feature as FeatureKey];
+  assert.ok(requiredTier === 'pro' || requiredTier === 'business');
   assert.deepEqual(findFormEntitlementBlock(oldForm, newData, can), {
     entitled: false,
     feature,
+    requiredTier,
   });
 };
 
@@ -232,7 +260,7 @@ assert.ok(throwingCanCalls > 0);
 
 assert.deepEqual(
   findFormEntitlementBlock(null, { fields: conditionalFields }, denyAll),
-  { entitled: false, feature: 'conditionalLogic' },
+  { entitled: false, feature: 'conditionalLogic', requiredTier: 'pro' },
   'whole-form duplication is evaluated as a create'
 );
 
@@ -253,6 +281,7 @@ interface ControllerHarnessOptions {
   existing?: Record<string, unknown> | null;
   proposedDuplicate?: Record<string, unknown>;
   can?: (feature: string) => boolean;
+  resolution?: 'checking' | 'resolved' | 'unavailable';
 }
 
 const createControllerHarness = (options: ControllerHarnessOptions = {}) => {
@@ -288,6 +317,9 @@ const createControllerHarness = (options: ControllerHarnessOptions = {}) => {
     can(feature: string) {
       canCalls.push(feature);
       return (options.can ?? denyAll)(feature);
+    },
+    resolution() {
+      return options.resolution ?? 'resolved';
     },
   };
   const services = { form, license };
@@ -496,10 +528,32 @@ void (async () => {
   )) as any;
   assert.equal(blockedCreateCtx.status, 402);
   assert.equal(blockedCreateResult.error.details.feature, 'conditionalLogic');
+  assert.equal(blockedCreateResult.error.details.requiredTier, 'pro');
+  assert.equal(blockedCreateResult.error.details.resolution, 'resolved');
+  assert.equal(
+    blockedCreateResult.error.message,
+    'Upgrade to Pro to use feature: conditionalLogic'
+  );
   assert.equal(blockedCreateHarness.createCalls.length, 0);
+
+  const blockedBusinessCreateHarness = createControllerHarness();
+  const blockedBusinessCreateCtx = makeContext({ title: 'Blocked', fields: [consent] });
+  const blockedBusinessCreateResult = (await blockedBusinessCreateHarness.controller.create(
+    blockedBusinessCreateCtx
+  )) as any;
+  assert.equal(blockedBusinessCreateCtx.status, 402);
+  assert.equal(blockedBusinessCreateResult.error.details.feature, 'compliance.consent');
+  assert.equal(blockedBusinessCreateResult.error.details.requiredTier, 'business');
+  assert.equal(blockedBusinessCreateResult.error.details.resolution, 'resolved');
+  assert.equal(
+    blockedBusinessCreateResult.error.message,
+    'Upgrade to Business to use feature: compliance.consent'
+  );
+  assert.equal(blockedBusinessCreateHarness.createCalls.length, 0);
 
   const blockedUpdateHarness = createControllerHarness({
     existing: { fields: conditionalFields },
+    resolution: 'checking',
   });
   const blockedUpdateCtx = makeContext({ fields: changedValueFields }, 'form-id');
   const blockedUpdateResult = (await blockedUpdateHarness.controller.update(
@@ -507,15 +561,29 @@ void (async () => {
   )) as any;
   assert.equal(blockedUpdateCtx.status, 402);
   assert.equal(blockedUpdateResult.error.details.feature, 'conditionalLogic');
+  assert.equal(blockedUpdateResult.error.details.requiredTier, 'pro');
+  assert.equal(blockedUpdateResult.error.details.resolution, 'checking');
+  assert.equal(blockedUpdateResult.error.details.upgradeUrl, undefined);
+  assert.equal(
+    blockedUpdateResult.error.message,
+    'FormFlow could not verify premium access. Check the license status, then retry saving.'
+  );
   assert.equal(blockedUpdateHarness.updateCalls.length, 0);
 
-  const blockedDuplicateHarness = createControllerHarness();
+  const blockedDuplicateHarness = createControllerHarness({ resolution: 'unavailable' });
   const blockedDuplicateCtx = makeContext({}, 'form-id');
   const blockedDuplicateResult = (await blockedDuplicateHarness.controller.duplicate(
     blockedDuplicateCtx
   )) as any;
   assert.equal(blockedDuplicateCtx.status, 402);
   assert.equal(blockedDuplicateResult.error.details.feature, 'conditionalLogic');
+  assert.equal(blockedDuplicateResult.error.details.requiredTier, 'pro');
+  assert.equal(blockedDuplicateResult.error.details.resolution, 'unavailable');
+  assert.equal(blockedDuplicateResult.error.details.upgradeUrl, undefined);
+  assert.equal(
+    blockedDuplicateResult.error.message,
+    'FormFlow could not verify premium access. Check the license status, then retry saving.'
+  );
   assert.equal(blockedDuplicateHarness.createCalls.length, 0);
 
   const entitledDuplicateHarness = createControllerHarness({ can: allowAll });

@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import * as licenseStateModule from '../license-state';
 
 import {
   accessPresentation,
@@ -85,5 +89,85 @@ assert.equal(reconcileDismissedNotice(unavailableNotice, null), null);
 
 assert.throws(() => parseLicenseSnapshot({ tier: 'pro' }));
 assert.deepEqual([0, 1, 2, 3, 20].map(retryDelay), [250, 500, 1000, 1000, 1000]);
+
+const refreshStartResolution = (
+  licenseStateModule as typeof licenseStateModule & {
+    refreshStartResolution?: (
+      resolution: LicenseSnapshot['resolution']
+    ) => LicenseSnapshot['resolution'];
+  }
+).refreshStartResolution;
+assert.equal(
+  typeof refreshStartResolution,
+  'function',
+  'license state must define how access behaves while a refresh starts'
+);
+assert.equal(
+  refreshStartResolution?.('resolved'),
+  'resolved',
+  'a transient refresh must preserve the last resolved access'
+);
+assert.equal(refreshStartResolution?.('checking'), 'checking');
+assert.equal(
+  refreshStartResolution?.('unavailable'),
+  'checking',
+  'retrying an unavailable state must expose active verification'
+);
+
+const refreshFailureResolution = (
+  licenseStateModule as typeof licenseStateModule & {
+    refreshFailureResolution?: (
+      resolution: LicenseSnapshot['resolution']
+    ) => LicenseSnapshot['resolution'];
+  }
+).refreshFailureResolution;
+assert.equal(
+  typeof refreshFailureResolution,
+  'function',
+  'license state must define how access behaves when a refresh fails'
+);
+assert.equal(
+  refreshFailureResolution?.('resolved'),
+  'resolved',
+  'a failed replacement refresh must preserve last-known resolved access'
+);
+assert.equal(refreshFailureResolution?.('checking'), 'unavailable');
+assert.equal(refreshFailureResolution?.('unavailable'), 'unavailable');
+
+const providerSource = readFileSync(
+  resolve(process.cwd(), 'admin/src/ee/providers/LicenseProvider.tsx'),
+  'utf8'
+);
+assert.match(providerSource, /const\s*\{\s*get\s*,\s*post\s*\}\s*=\s*useFetchClient\(\)/);
+assert.match(
+  providerSource,
+  /setResolution\(\s*\(current\)\s*=>\s*refreshStartResolution\(current\)\s*\)/,
+  'refresh start must preserve a resolved access state'
+);
+assert.match(
+  providerSource,
+  /setResolution\(\s*\(current\)\s*=>\s*refreshFailureResolution\(current\)\s*\)/,
+  'refresh failure must preserve a previously resolved access state'
+);
+assert.match(
+  providerSource,
+  /mode\s*===\s*['"]remote['"][\s\S]*?post<unknown>\(`\/\$\{PLUGIN_ID\}\/license\/refresh`\)/,
+  'manual and 402 recovery must actively refresh the server license'
+);
+assert.match(
+  providerSource,
+  /firstSnapshot\.resolution\s*===\s*['"]checking['"][\s\S]*?fetchUntilSettled\(firstSnapshot\)/,
+  'a manual refresh may GET-poll only when the POST result is still checking'
+);
+assert.match(
+  providerSource,
+  /void\s+runRequest\(['"]snapshot['"]\)/,
+  'initial mount must read the current snapshot without forcing remote validation'
+);
+assert.match(
+  providerSource,
+  /runRequest\(['"]remote['"]\)/,
+  'context refresh must use the authenticated remote-refresh endpoint'
+);
 
 console.log('All assertions passed: admin license access state and retry delays.');

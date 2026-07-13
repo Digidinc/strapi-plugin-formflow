@@ -105,12 +105,35 @@ const builderSource = readFileSync(
   resolve(process.cwd(), 'admin/src/ee/components/FormBuilder/ConditionalLogicBuilder.tsx'),
   'utf8'
 );
+const checkingStart = builderSource.indexOf("case 'checking':");
+const unavailableStart = builderSource.indexOf("case 'unavailable':", checkingStart);
+const readonlyStart = builderSource.indexOf("case 'readonly-rule':", unavailableStart);
+const danglingReadonlyStart = builderSource.indexOf("case 'dangling-readonly':", readonlyStart);
 const repairStart = builderSource.indexOf("case 'repair-rule':");
 const prerequisiteStart = builderSource.indexOf("case 'prerequisite':", repairStart);
+assert.notEqual(checkingStart, -1, 'checking branch must exist');
+assert.notEqual(unavailableStart, -1, 'unavailable branch must exist');
+assert.notEqual(readonlyStart, -1, 'readonly-rule branch must exist');
+assert.notEqual(danglingReadonlyStart, -1, 'dangling-readonly branch must exist');
 assert.notEqual(repairStart, -1, 'repair-rule branch must exist');
 assert.notEqual(prerequisiteStart, -1, 'repair-rule branch must have a bounded successor');
 
+const checkingBranch = builderSource.slice(checkingStart, unavailableStart);
+const unavailableBranch = builderSource.slice(unavailableStart, readonlyStart);
+const readonlyBranch = builderSource.slice(readonlyStart, danglingReadonlyStart);
+const danglingReadonlyBranch = builderSource.slice(danglingReadonlyStart, repairStart);
 const repairBranch = builderSource.slice(repairStart, prerequisiteStart);
+const removeButtonStart = builderSource.indexOf('const removeRuleButton');
+assert.notEqual(removeButtonStart, -1, 'a shared conditional-rule removal action must exist');
+const removeButtonEnd = builderSource.indexOf(';', removeButtonStart);
+const removeButtonSource = builderSource.slice(removeButtonStart, removeButtonEnd + 1);
+assert.match(removeButtonSource, /variant="danger-light"/);
+assert.match(removeButtonSource, /onClick=\{\(\) => onChange\(undefined\)\}/);
+assert.match(removeButtonSource, /fieldEditor\.conditional\.remove/);
+assert.match(readonlyBranch, /\{removeRuleButton\}/);
+assert.match(danglingReadonlyBranch, /\{removeRuleButton\}/);
+assert.doesNotMatch(checkingBranch, /removeRuleButton/);
+assert.doesNotMatch(unavailableBranch, /removeRuleButton/);
 assert.doesNotMatch(
   repairBranch,
   /<Alert\b/,
@@ -125,5 +148,10 @@ assert.match(repairBranch, /role="status"/);
 assert.match(repairBranch, /\{danglingCopy\}/);
 assert.match(repairBranch, /\{editor\}/);
 assert.doesNotMatch(builderSource, /^\s*Alert,\s*$/m, 'the obsolete Alert import must be removed');
+
+const translations = JSON.parse(
+  readFileSync(resolve(process.cwd(), 'admin/src/translations/en.json'), 'utf8')
+) as Record<string, string>;
+assert.equal(translations['formflow.fieldEditor.conditional.remove'], 'Remove conditional rule');
 
 console.log('All assertions passed: conditional logic body priority is deterministic.');

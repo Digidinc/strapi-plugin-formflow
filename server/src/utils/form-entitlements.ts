@@ -31,7 +31,10 @@ export interface NewFormData {
 export interface FormEntitlementBlock {
   entitled: false;
   feature: string;
+  requiredTier: FormEntitlementTier;
 }
+
+export type FormEntitlementTier = 'pro' | 'business';
 
 const PRO_FIELD_TYPES = new Set([
   'signature',
@@ -79,7 +82,7 @@ export function findFormEntitlementBlock(
       Array.isArray(newSettings.steps) &&
       newSettings.steps.length > (oldSettings.steps?.length ?? 0);
     if (switchingToMultiStep || addingSteps) {
-      return { entitled: false, feature: 'multistep' };
+      return { entitled: false, feature: 'multistep', requiredTier: 'pro' };
     }
   }
 
@@ -88,7 +91,7 @@ export function findFormEntitlementBlock(
     !safeCan('conditionalLogic') &&
     !isAllowedUnentitledConditionalTransition(oldFields as FormField[], newFields as FormField[])
   ) {
-    return { entitled: false, feature: 'conditionalLogic' };
+    return { entitled: false, feature: 'conditionalLogic', requiredTier: 'pro' };
   }
 
   const oldIdCounts = providedIdCounts(oldFields);
@@ -116,7 +119,7 @@ export function findFormEntitlementBlock(
     if (!PRO_FIELD_TYPES.has(field.type ?? '')) continue;
     const existingType = existingTypeFor(field);
     if (existingType !== field.type && !safeCan(`fields.${field.type}`)) {
-      return { entitled: false, feature: `fields.${field.type}` };
+      return { entitled: false, feature: `fields.${field.type}`, requiredTier: 'pro' };
     }
   }
 
@@ -125,7 +128,7 @@ export function findFormEntitlementBlock(
       if (field.type !== 'consent') continue;
       const existingType = existingTypeFor(field);
       if (existingType !== 'consent') {
-        return { entitled: false, feature: 'compliance.consent' };
+        return { entitled: false, feature: 'compliance.consent', requiredTier: 'business' };
       }
     }
   }
@@ -134,7 +137,7 @@ export function findFormEntitlementBlock(
     const oldCss = oldSettings.customCss ?? '';
     const newCss = newSettings.customCss ?? '';
     if (newCss.trim() !== '' && oldCss.trim() === '') {
-      return { entitled: false, feature: 'whiteLabel' };
+      return { entitled: false, feature: 'whiteLabel', requiredTier: 'pro' };
     }
   }
 
@@ -143,14 +146,14 @@ export function findFormEntitlementBlock(
     newData.requiresApproval === true &&
     oldForm?.requiresApproval !== true
   ) {
-    return { entitled: false, feature: 'approval' };
+    return { entitled: false, feature: 'approval', requiredTier: 'business' };
   }
 
   if (!safeCan('multiLanguage')) {
     const oldHasLocales = Object.keys(oldForm?.locales ?? {}).length > 0;
     const newHasLocales = newData.locales != null && Object.keys(newData.locales).length > 0;
     if (newHasLocales && !oldHasLocales) {
-      return { entitled: false, feature: 'multiLanguage' };
+      return { entitled: false, feature: 'multiLanguage', requiredTier: 'business' };
     }
   }
 
