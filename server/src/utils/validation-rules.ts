@@ -191,7 +191,9 @@ export const validateUploadedFile = (
       if (!Number.isNaN(maxSizeMb) && maxSizeMb > 0) {
         const maxSizeBytes = maxSizeMb * 1024 * 1024;
         if (size > maxSizeBytes) {
-          errors.push(rule.message || `File "${fileName}" exceeds the maximum size of ${maxSizeMb}MB`);
+          errors.push(
+            rule.message || `File "${fileName}" exceeds the maximum size of ${maxSizeMb}MB`
+          );
         }
       }
     } else if (rule.type === 'allowedTypes') {
@@ -285,4 +287,22 @@ export const isFieldVisible = (
     return true;
   }
   return evaluateConditional(conditional, data);
+};
+
+export const partitionFieldsByVisibility = <
+  T extends {
+    conditional?: ConditionalRule;
+  },
+>(
+  fields: T[],
+  data: Record<string, unknown>
+): { visible: T[]; hidden: T[] } => {
+  const visible: T[] = [];
+  const hidden: T[] = [];
+
+  for (const field of fields) {
+    (isFieldVisible(field.conditional, data) ? visible : hidden).push(field);
+  }
+
+  return { visible, hidden };
 };

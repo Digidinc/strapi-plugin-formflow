@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto';
 
 import type { Core } from '@strapi/strapi';
 
+import { partitionFieldsByVisibility } from '../utils/validation-rules';
 import type { ValidatableField, UploadedFileMeta, UploadedFilesMap } from './validation';
 
 /**
@@ -288,16 +289,18 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
     }
 
     const formFields = form.fields || [];
+    const visibilityData = { ...submissionData };
+    const { visible: visibleFields } = partitionFieldsByVisibility(formFields, visibilityData);
 
     // Validate non-file submission data against form field definitions.
-    const validationResult = validationService.validate(formFields, submissionData);
+    const validationResult = validationService.validate(visibleFields, visibilityData);
 
     // Validate uploaded files (required/maxSize/allowedTypes) BEFORE persisting
     // anything to the media library, so oversize/disallowed files never land.
     const fileValidationResult = validationService.validateFiles(
-      formFields,
+      visibleFields,
       files,
-      submissionData
+      visibilityData
     );
 
     // Merge field-level errors from both passes and reject as one response.
@@ -312,10 +315,10 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     // Files passed validation: upload them to the media library and place the
     // resulting media references into the submission data under each field name.
-    await this.processFileUploads(formFields, files, submissionData);
+    await this.processFileUploads(visibleFields, files, submissionData);
 
     // Sanitize data before storage
-    const sanitizedData = validationService.sanitize(formFields, submissionData);
+    const sanitizedData = validationService.sanitize(visibleFields, submissionData);
 
     // Optionally anonymize the submitter IP before it is persisted. When the
     // plugin config `anonymizeIp` is false (the default) the raw IP is stored
@@ -368,9 +371,7 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
           formVersion: form.updatedAt,
         },
         status: 'new' as SubmissionStatus,
-        ...(form.requiresApproval
-          ? { approvalStatus: 'pending' as ApprovalStatus }
-          : {}),
+        ...(form.requiresApproval ? { approvalStatus: 'pending' as ApprovalStatus } : {}),
         ipAddress: storedIpAddress,
         userAgent: metadata.userAgent,
       },
@@ -540,10 +541,7 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
    * @param steps - The form's defined steps
    * @param indicator - Step id or zero-based index
    */
-  resolveStep(
-    steps: FormStepDefinition[],
-    indicator: string | number
-  ): FormStepDefinition | null {
+  resolveStep(steps: FormStepDefinition[], indicator: string | number): FormStepDefinition | null {
     // Prefer an exact id match.
     const byId = steps.find((s) => s.id === String(indicator));
     if (byId) {
@@ -1072,7 +1070,9 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
-        strapi.log.error(`[FormFlow] Autoresponder dispatch failed for form "${form.title}": ${message}`);
+        strapi.log.error(
+          `[FormFlow] Autoresponder dispatch failed for form "${form.title}": ${message}`
+        );
       }
       // --- End Gate #6 ---
     }
