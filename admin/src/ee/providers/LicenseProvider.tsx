@@ -112,11 +112,19 @@ const LicenseProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [refresh]);
 
-  const access: LicenseContextValue['access'] = (feature) => {
-    if (resolution === 'checking') return 'checking';
-    if (resolution === 'unavailable') return 'unavailable';
-    return featureAccess(snapshot, feature);
-  };
+  const accessSnapshot: LicenseSnapshot | null =
+    snapshot !== null
+      ? { ...snapshot, resolution }
+      : resolution === 'unavailable'
+        ? {
+            tier: 'free',
+            state: 'free',
+            resolution,
+            graceUntil: null,
+            features: {},
+          }
+        : null;
+  const access: LicenseContextValue['access'] = (feature) => featureAccess(accessSnapshot, feature);
 
   const value: LicenseContextValue = {
     access,

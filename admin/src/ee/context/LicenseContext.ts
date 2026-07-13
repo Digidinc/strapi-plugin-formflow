@@ -2,7 +2,12 @@
 import { createContext } from 'react';
 
 import type { FeatureKey } from '../feature-map';
-import type { FeatureAccess, LicenseResolution, LicenseSnapshot } from '../license-state';
+import {
+  featureAccess,
+  type FeatureAccess,
+  type LicenseResolution,
+  type LicenseSnapshot,
+} from '../license-state';
 
 /**
  * Shape exposed to consumers via {@link useLicense}. The accessors are functions
@@ -22,14 +27,16 @@ export interface LicenseContextValue {
   refresh: () => Promise<void>;
 }
 
+const defaultAccess = (feature: FeatureKey): FeatureAccess => featureAccess(null, feature);
+
 /**
  * The default value is an unresolved sentinel. It never over-grants, but it
  * keeps unknown access distinct from a verified free plan until the provider
  * resolves.
  */
 export const LicenseContext = createContext<LicenseContextValue>({
-  access: () => 'checking',
-  can: () => false,
+  access: defaultAccess,
+  can: (feature) => defaultAccess(feature) === 'entitled',
   tier: () => 'free',
   state: () => 'free',
   resolution: 'checking',

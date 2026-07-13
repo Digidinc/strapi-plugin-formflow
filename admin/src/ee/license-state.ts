@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 
-import type { FeatureKey } from './feature-map';
+import { FEATURE_TIER, type FeatureKey } from './feature-map';
 
 export type LicenseResolution = 'checking' | 'resolved' | 'unavailable';
 export type FeatureAccess = 'checking' | 'entitled' | 'unentitled' | 'unavailable';
@@ -54,6 +54,7 @@ export function featureAccess(
   snapshot: LicenseSnapshot | null,
   feature: FeatureKey
 ): FeatureAccess {
+  if (FEATURE_TIER[feature] === 'free') return 'entitled';
   if (!snapshot || snapshot.resolution === 'checking') return 'checking';
   if (snapshot.resolution === 'unavailable') return 'unavailable';
   return snapshot.features[feature] === true ? 'entitled' : 'unentitled';

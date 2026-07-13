@@ -35,6 +35,9 @@ const businessSnapshot = snapshot({
 assert.equal(featureAccess(null, 'conditionalLogic'), 'checking');
 assert.equal(featureAccess(checkingSnapshot, 'conditionalLogic'), 'checking');
 assert.equal(featureAccess(unavailableSnapshot, 'conditionalLogic'), 'unavailable');
+assert.equal(featureAccess(null, 'fields.file'), 'entitled');
+assert.equal(featureAccess(checkingSnapshot, 'fields.file'), 'entitled');
+assert.equal(featureAccess(unavailableSnapshot, 'fields.file'), 'entitled');
 assert.equal(featureAccess(freeSnapshot, 'conditionalLogic'), 'unentitled');
 assert.equal(featureAccess(proSnapshot, 'conditionalLogic'), 'entitled');
 assert.equal(featureAccess(businessSnapshot, 'conditionalLogic'), 'entitled');
