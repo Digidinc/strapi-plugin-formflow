@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useFetchClient } from '@strapi/strapi/admin';
 import { API, Form, FormPayload, ApiResponse } from '../utils/api';
+import { toFormApiError } from '../utils/form-api-error';
+
+export type { FormApiError } from '../utils/form-api-error';
 
 export interface UseFormReturn {
   form: Form | null;
@@ -12,48 +15,6 @@ export interface UseFormReturn {
   updateForm: (data: Partial<FormPayload>) => Promise<Form>;
   deleteForm: () => Promise<void>;
 }
-
-/**
- * Error thrown by {@link useForm}'s create/update operations. Carries the
- * server's structured error so callers (e.g. FormEditPage) can map field-level
- * validation messages and inspect the HTTP status. The Strapi admin fetch
- * client rejects with a `FetchError` whose `response.data.error` holds the
- * `{ message, details, status }` payload produced by the backend.
- */
-export interface FormApiError extends Error {
-  /** Field-level validation details keyed by field name, when provided. */
-  details?: Record<string, unknown>;
-  /** HTTP status of the failed request (e.g. 400 for validation errors). */
-  status?: number;
-}
-
-/**
- * Normalize an error rejected by the admin fetch client into a {@link FormApiError},
- * preferring the server-provided `{ message, details, status }` over the generic
- * client message so callers can surface field-level validation.
- */
-const toFormApiError = (err: unknown, fallbackMessage: string): FormApiError => {
-  const fetchErr = err as
-    | {
-        message?: string;
-        status?: number;
-        response?: {
-          data?: {
-            error?: { message?: string; details?: Record<string, unknown>; status?: number };
-          };
-        };
-      }
-    | undefined;
-
-  const apiErr = fetchErr?.response?.data?.error;
-  const message =
-    apiErr?.message || (err instanceof Error ? err.message : '') || fallbackMessage;
-
-  const e: FormApiError = new Error(message);
-  e.details = apiErr?.details;
-  e.status = apiErr?.status ?? fetchErr?.status;
-  return e;
-};
 
 /**
  * Hook for managing a single form
@@ -106,7 +67,6 @@ export const useForm = (documentId?: string): UseFormReturn => {
         return newForm;
       } catch (err) {
         const error = toFormApiError(err, 'Failed to create form');
-        setError(error);
         throw error;
       } finally {
         setIsSaving(false);
@@ -131,7 +91,6 @@ export const useForm = (documentId?: string): UseFormReturn => {
         return updatedForm;
       } catch (err) {
         const error = toFormApiError(err, 'Failed to update form');
-        setError(error);
         throw error;
       } finally {
         setIsSaving(false);

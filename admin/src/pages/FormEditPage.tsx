@@ -26,9 +26,15 @@ import {
 import { useIntl } from 'react-intl';
 
 import { getTranslation } from '../utils/getTranslation';
+import {
+  classifyFormApiError,
+  paymentRequiredCopy,
+  safeUpgradeUrl,
+  type FormApiError,
+} from '../utils/form-api-error';
 import { FORM_PERMISSIONS } from '../permissions';
 import { useForm } from '../hooks';
-import type { FormApiError } from '../hooks/useForm';
+import { useLicense } from '../ee/hooks/useLicense';
 import { FormBuilder } from '../components/FormBuilder';
 import { FormSettings } from '../components/FormSettings';
 import { EmailSettings } from '../components/FormSettings/EmailSettings';
@@ -137,7 +143,11 @@ const detailToMessage = (value: unknown): string | undefined => {
       .filter((m): m is string => Boolean(m));
     return messages.length > 0 ? messages.join(', ') : undefined;
   }
-  if (value && typeof value === 'object' && typeof (value as { message?: unknown }).message === 'string') {
+  if (
+    value &&
+    typeof value === 'object' &&
+    typeof (value as { message?: unknown }).message === 'string'
+  ) {
     return (value as { message: string }).message;
   }
   return undefined;
@@ -185,6 +195,7 @@ export const FormEditPage = () => {
   const navigate = useNavigate();
   const { formatMessage } = useIntl();
   const { toggleNotification } = useNotification();
+  const { refresh: refreshLicense } = useLicense();
 
   const isCreating = !id;
   const documentId = isCreating ? undefined : id;
@@ -204,6 +215,9 @@ export const FormEditPage = () => {
   const [formData, setFormData] = useState<FormData>(getEmptyFormData());
   const [hasChanges, setHasChanges] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [isSavePending, setIsSavePending] = useState(false);
+  const isSavePendingRef = React.useRef(false);
+  const savePending = isSaving || isSavePending;
   // Set while programmatically navigating after a successful save so the
   // unsaved-changes blocker does not fire on our own redirect.
   const isSaveNavigatingRef = React.useRef(false);
@@ -280,6 +294,10 @@ export const FormEditPage = () => {
 
   // Save handler
   const handleSave = useCallback(async () => {
+    if (isSavePendingRef.current) {
+      return;
+    }
+
     const nextErrors: FieldErrors = {};
     if (!formData.title.trim()) {
       nextErrors.title = formatMessage({
@@ -299,6 +317,8 @@ export const FormEditPage = () => {
       return;
     }
 
+    isSavePendingRef.current = true;
+    setIsSavePending(true);
     setFieldErrors({});
 
     try {
@@ -342,22 +362,94 @@ export const FormEditPage = () => {
       const apiErr = err as FormApiError;
       const message = err instanceof Error ? err.message : '';
       const details = apiErr?.details;
-      const isValidationError = Boolean(details) || apiErr?.status === 400;
+      const kind = classifyFormApiError(apiErr);
 
-      // Surface server validation onto fields where possible. For validation
-      // errors, prefer the structured `details` so field-level messages land on
-      // the right inputs; only fall back to a toast when nothing could be mapped.
-      const mapped: FieldErrors = isValidationError
-        ? mapServerErrorToFields(message, details)
-        : {};
-      const mappedAnyField = Object.keys(mapped).length > 0;
-      if (mappedAnyField) {
-        setFieldErrors(mapped);
+      if (kind === 'payment_required') {
+        const copy = paymentRequiredCopy(details);
+        const upgradeUrl = safeUpgradeUrl(details?.upgradeUrl);
+        await refreshLicense();
+
+        const paymentMessage =
+          copy.kind === 'known'
+            ? formatMessage(
+                {
+                  id: getTranslation('form.save.paymentRequired.known'),
+                  defaultMessage:
+                    '{feature} requires a {tier} plan. Upgrade your plan or remove that premium configuration before saving.',
+                },
+                {
+                  feature: formatMessage({
+                    id: getTranslation(`form.save.paymentFeature.${copy.feature}`),
+                    defaultMessage: copy.defaultLabel,
+                  }),
+                  tier: formatMessage({
+                    id: getTranslation(`license.tier.${copy.tier}`),
+                    defaultMessage: copy.tier === 'business' ? 'Business' : 'Pro',
+                  }),
+                }
+              )
+            : formatMessage({
+                id: getTranslation('form.save.paymentRequired'),
+                defaultMessage:
+                  'This form uses premium configuration that is not available on the current plan. Review the plan or remove the premium settings before saving.',
+              });
+
+        toggleNotification({
+          type: 'info',
+          message: paymentMessage,
+          link: upgradeUrl
+            ? {
+                label: formatMessage({
+                  id: getTranslation('license.viewPlans'),
+                  defaultMessage: 'View plans',
+                }),
+                url: upgradeUrl,
+                target: '_blank',
+              }
+            : undefined,
+        });
+        return;
       }
 
-      if (isValidationError && mappedAnyField) {
-        // Field-level errors are already shown inline; skip the toast.
-        return;
+      if (kind === 'validation') {
+        const conditionalIssues = Array.isArray(details?.conditionalIssues)
+          ? details.conditionalIssues
+          : [];
+
+        if (conditionalIssues.length > 0) {
+          const issueSummary = conditionalIssues
+            .flatMap((issue) => {
+              if (!issue || typeof issue !== 'object' || typeof issue.message !== 'string') {
+                return [];
+              }
+
+              const fieldName =
+                typeof issue.fieldName === 'string' && issue.fieldName
+                  ? `“${issue.fieldName}”: `
+                  : '';
+              return [`${fieldName}${issue.message}`];
+            })
+            .join('; ');
+
+          toggleNotification({
+            type: 'danger',
+            message: formatMessage(
+              {
+                id: getTranslation('form.validation.conditionalConfiguration'),
+                defaultMessage: 'Fix the conditional logic configuration before saving: {issues}',
+              },
+              { issues: issueSummary || message }
+            ),
+          });
+          return;
+        }
+
+        // Only explicit 400 responses may map structured details onto fields.
+        const mapped = mapServerErrorToFields(message, details);
+        if (Object.keys(mapped).length > 0) {
+          setFieldErrors(mapped);
+          return;
+        }
       }
 
       toggleNotification({
@@ -369,8 +461,20 @@ export const FormEditPage = () => {
             defaultMessage: isCreating ? 'Failed to create form' : 'Failed to save form',
           }),
       });
+    } finally {
+      isSavePendingRef.current = false;
+      setIsSavePending(false);
     }
-  }, [formData, isCreating, createForm, updateForm, toggleNotification, navigate, formatMessage]);
+  }, [
+    formData,
+    isCreating,
+    createForm,
+    updateForm,
+    toggleNotification,
+    navigate,
+    formatMessage,
+    refreshLicense,
+  ]);
 
   const tabTitle = useMemo(
     () =>
@@ -414,8 +518,8 @@ export const FormEditPage = () => {
             type="submit"
             startIcon={<Check />}
             onClick={handleSave}
-            loading={isSaving}
-            disabled={isSaving || (!hasChanges && !isCreating)}
+            loading={savePending}
+            disabled={savePending || (!hasChanges && !isCreating)}
           >
             {formatMessage({ id: getTranslation('common.save'), defaultMessage: 'Save' })}
           </Button>
