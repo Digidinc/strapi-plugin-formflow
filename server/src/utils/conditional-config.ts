@@ -68,23 +68,23 @@ export function validateConditionalConfig(fields: FormField[]): ConditionalConfi
     }
   }
 
-  const fieldByName = new Map<string, FormField>();
-  for (const field of validFields) {
+  const fieldByName = new Map<string, { field: FormField; index: number }>();
+  for (const [fieldIndex, field] of validFields.entries()) {
     if ((nameCounts.get(field.name) ?? 0) === 1) {
-      fieldByName.set(field.name, field);
+      fieldByName.set(field.name, { field, index: fieldIndex });
     }
   }
 
-  const edges = new Map<string, string>();
+  const edges = new Map<number, number>();
 
-  for (const field of validFields) {
+  for (const [fieldIndex, field] of validFields.entries()) {
     const rawRule = field.conditional as unknown;
     if (rawRule === undefined || rawRule === null) continue;
 
     const rule = isRecord(rawRule) ? rawRule : null;
     const sourceName = rule && typeof rule.field === 'string' ? rule.field : '';
-    const operator = rule && typeof rule.operator === 'string' ? rule.operator : '';
     const source = sourceName ? fieldByName.get(sourceName) : undefined;
+    const operator = rule && typeof rule.operator === 'string' ? rule.operator : '';
 
     let validEdge = true;
     if (!source) {
@@ -98,15 +98,15 @@ export function validateConditionalConfig(fields: FormField[]): ConditionalConfi
         )
       );
       validEdge = false;
-    } else if (source.id === field.id) {
+    } else if (source.index === fieldIndex) {
       issues.push(issue(field, 'self_reference', 'A field cannot depend on itself.'));
       validEdge = false;
-    } else if (isLayoutField(source.type)) {
+    } else if (isLayoutField(source.field.type)) {
       issues.push(
         issue(
           field,
           'layout_source',
-          `Layout field "${source.name}" cannot be a conditional source.`
+          `Layout field "${source.field.name}" cannot be a conditional source.`
         )
       );
       validEdge = false;
@@ -126,43 +126,43 @@ export function validateConditionalConfig(fields: FormField[]): ConditionalConfi
     }
 
     if (validEdge && source) {
-      edges.set(field.id, source.id);
+      edges.set(fieldIndex, source.index);
     }
   }
 
-  const state = new Map<string, 'visiting' | 'visited'>();
-  const stack: string[] = [];
-  const cycleIds = new Set<string>();
+  const state = new Map<number, 'visiting' | 'visited'>();
+  const stack: number[] = [];
+  const cycleIndices = new Set<number>();
 
-  const visit = (fieldId: string): void => {
-    state.set(fieldId, 'visiting');
-    stack.push(fieldId);
+  const visit = (fieldIndex: number): void => {
+    state.set(fieldIndex, 'visiting');
+    stack.push(fieldIndex);
 
-    const sourceId = edges.get(fieldId);
-    if (sourceId) {
-      const sourceState = state.get(sourceId);
+    const sourceIndex = edges.get(fieldIndex);
+    if (sourceIndex !== undefined) {
+      const sourceState = state.get(sourceIndex);
       if (sourceState === undefined) {
-        visit(sourceId);
+        visit(sourceIndex);
       } else if (sourceState === 'visiting') {
-        const cycleStart = stack.indexOf(sourceId);
-        for (const cycleId of stack.slice(cycleStart)) {
-          cycleIds.add(cycleId);
+        const cycleStart = stack.indexOf(sourceIndex);
+        for (const cycleIndex of stack.slice(cycleStart)) {
+          cycleIndices.add(cycleIndex);
         }
       }
     }
 
     stack.pop();
-    state.set(fieldId, 'visited');
+    state.set(fieldIndex, 'visited');
   };
 
-  for (const field of validFields) {
-    if (state.get(field.id) === undefined) {
-      visit(field.id);
+  for (const [fieldIndex] of validFields.entries()) {
+    if (state.get(fieldIndex) === undefined) {
+      visit(fieldIndex);
     }
   }
 
-  for (const field of validFields) {
-    if (cycleIds.has(field.id)) {
+  for (const [fieldIndex, field] of validFields.entries()) {
+    if (cycleIndices.has(fieldIndex)) {
       issues.push(issue(field, 'cycle', 'Conditional rules cannot form a cycle.'));
     }
   }

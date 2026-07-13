@@ -18,6 +18,11 @@ const makeField = (overrides: Partial<FormField> & Pick<FormField, 'id' | 'name'
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+const withoutId = (field: FormField): FormField => {
+  const { id: _id, ...fieldWithoutId } = field;
+  return fieldWithoutId as FormField;
+};
+
 const deepFreeze = <T>(value: T): T => {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     for (const child of Object.values(value as Record<string, unknown>)) {
@@ -54,6 +59,57 @@ const emptyTarget = makeField({
 });
 
 assert.deepEqual(validateConditionalConfig([source, target, emptyTarget]), []);
+
+const missingIdSource = withoutId(
+  makeField({ id: 'discarded-source-id', name: 'missing_id_source' })
+);
+const missingIdTarget = withoutId(
+  makeField({
+    id: 'discarded-target-id',
+    name: 'missing_id_target',
+    conditional: {
+      field: missingIdSource.name,
+      operator: 'equals',
+      value: 'yes',
+    },
+  })
+);
+assert.deepEqual(
+  validateConditionalConfig([missingIdSource, missingIdTarget]),
+  [],
+  'distinct source and target fields remain distinct before IDs are generated'
+);
+
+const missingIdCycle = [
+  withoutId(
+    makeField({
+      id: 'discarded-cycle-a',
+      name: 'missing_id_cycle_a',
+      conditional: {
+        field: 'missing_id_cycle_b',
+        operator: 'equals',
+        value: 'a',
+      },
+    })
+  ),
+  withoutId(
+    makeField({
+      id: 'discarded-cycle-b',
+      name: 'missing_id_cycle_b',
+      conditional: {
+        field: 'missing_id_cycle_a',
+        operator: 'equals',
+        value: 'b',
+      },
+    })
+  ),
+];
+assert.deepEqual(
+  validateConditionalConfig(missingIdCycle).map((issue) => issue.code),
+  ['cycle', 'cycle'],
+  'missing-ID edges preserve index zero and detect the complete cycle'
+);
+
 assert.deepEqual(
   validateConditionalConfig([null, 42, 'field'] as unknown as FormField[]),
   [],

@@ -15,6 +15,11 @@ const makeField = (overrides: Partial<FormField> & Pick<FormField, 'id' | 'name'
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+const withoutId = (field: FormField): FormField => {
+  const { id: _id, ...fieldWithoutId } = field;
+  return fieldWithoutId as FormField;
+};
+
 const deepFreeze = <T>(value: T): T => {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     for (const child of Object.values(value as Record<string, unknown>)) {
@@ -32,6 +37,19 @@ const target = makeField({
   conditional: { field: source.name, operator: 'equals', value: 'business' },
 });
 const conditionalFields = [source, target];
+const missingIdConditionalSource = withoutId({
+  ...source,
+  name: 'missing_id_customer_type',
+});
+const missingIdConditionalTarget = withoutId({
+  ...target,
+  name: 'missing_id_company_name',
+  conditional: {
+    ...target.conditional!,
+    field: missingIdConditionalSource.name,
+  },
+});
+const missingIdConditionalFields = [missingIdConditionalSource, missingIdConditionalTarget];
 const denyAll = () => false;
 const allowAll = () => true;
 
@@ -360,6 +378,43 @@ void (async () => {
   assert.equal(missingIdCreateCtx.status, 201);
   assert.equal(missingIdCreateResult.error, undefined);
   assert.equal(missingIdCreateHarness.createCalls.length, 1);
+
+  let generatedCreateData: Record<string, any> | null = null;
+  let generatedFormService!: ReturnType<typeof formService>;
+  const generatedIdStrapi = {
+    documents() {
+      return {
+        async create({ data }: { data: Record<string, any> }) {
+          generatedCreateData = data;
+          return { documentId: 'generated-form-id', ...data };
+        },
+      };
+    },
+    plugin() {
+      return {
+        service(name: 'form' | 'license') {
+          return name === 'form' ? generatedFormService : { can: allowAll };
+        },
+      };
+    },
+    log: { error(..._args: unknown[]) {} },
+  };
+  generatedFormService = formService({ strapi: generatedIdStrapi as any });
+  const generatedIdController = formController({ strapi: generatedIdStrapi as any });
+  const generatedIdCreateCtx = makeContext({
+    title: 'Generated conditional IDs',
+    fields: missingIdConditionalFields,
+  });
+  const generatedIdCreateResult = (await generatedIdController.create(generatedIdCreateCtx)) as any;
+  assert.equal(generatedIdCreateCtx.status, 201);
+  assert.equal(generatedIdCreateResult.data.documentId, 'generated-form-id');
+  assert.ok(generatedCreateData);
+  const generatedIds = generatedCreateData.fields.map((field: FormField) => field.id);
+  assert.deepEqual(
+    generatedIds.map((fieldId: unknown) => typeof fieldId),
+    ['string', 'string']
+  );
+  assert.equal(new Set(generatedIds).size, 2);
 
   const invalidUpdateHarness = createControllerHarness({
     existing: { fields: conditionalFields },
