@@ -5,6 +5,13 @@ import { FEATURE_TIER, type FeatureKey } from './feature-map';
 export type LicenseResolution = 'checking' | 'resolved' | 'unavailable';
 export type FeatureAccess = 'checking' | 'entitled' | 'unentitled' | 'unavailable';
 
+export interface AccessPresentation {
+  disabled: boolean;
+  showUpgrade: boolean;
+  showRetry: boolean;
+  reason: 'checking' | 'unentitled' | 'unavailable' | null;
+}
+
 export interface LicenseSnapshot {
   tier: 'free' | 'pro' | 'business';
   state: 'active' | 'grace' | 'expired' | 'free';
@@ -58,6 +65,15 @@ export function featureAccess(
   if (!snapshot || snapshot.resolution === 'checking') return 'checking';
   if (snapshot.resolution === 'unavailable') return 'unavailable';
   return snapshot.features[feature] === true ? 'entitled' : 'unentitled';
+}
+
+export function accessPresentation(access: FeatureAccess): AccessPresentation {
+  return {
+    disabled: access !== 'entitled',
+    showUpgrade: access === 'unentitled',
+    showRetry: access === 'unavailable',
+    reason: access === 'entitled' ? null : access,
+  };
 }
 
 export function retryDelay(attempt: number): number {

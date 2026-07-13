@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 
 import {
+  accessPresentation,
   featureAccess,
   parseLicenseSnapshot,
   retryDelay,
@@ -41,6 +42,15 @@ assert.equal(featureAccess(unavailableSnapshot, 'fields.file'), 'entitled');
 assert.equal(featureAccess(freeSnapshot, 'conditionalLogic'), 'unentitled');
 assert.equal(featureAccess(proSnapshot, 'conditionalLogic'), 'entitled');
 assert.equal(featureAccess(businessSnapshot, 'conditionalLogic'), 'entitled');
+assert.deepEqual(accessPresentation('checking'), {
+  disabled: true,
+  showUpgrade: false,
+  showRetry: false,
+  reason: 'checking',
+});
+assert.equal(accessPresentation('unentitled').showUpgrade, true);
+assert.equal(accessPresentation('unavailable').showRetry, true);
+assert.equal(accessPresentation('entitled').disabled, false);
 assert.throws(() => parseLicenseSnapshot({ tier: 'pro' }));
 assert.deepEqual([0, 1, 2, 3, 20].map(retryDelay), [250, 500, 1000, 1000, 1000]);
 
