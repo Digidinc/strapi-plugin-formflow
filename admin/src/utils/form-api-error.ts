@@ -4,6 +4,15 @@ import type { LicenseResolution } from '../ee/license-state';
 export type FormApiErrorKind = 'validation' | 'payment_required' | 'other';
 
 const FORM_SAVE_FEATURE_LABELS = {
+  webhooks: 'Webhooks',
+  'email.advanced': 'Additional email notifications',
+  'email.customTemplate': 'Custom email templates and reply-to',
+  'email.autoresponder': 'Email autoresponders',
+  'email.whiteLabel': 'Email branding removal',
+  'spam.recaptchaV3': 'reCAPTCHA v3',
+  'spam.turnstile': 'Cloudflare Turnstile',
+  'spam.hcaptcha': 'hCaptcha',
+  'spam.ipBlocklist': 'IP blocklist',
   multistep: 'Multi-step forms',
   conditionalLogic: 'Conditional Logic',
   'fields.signature': 'Signature fields',
@@ -16,6 +25,7 @@ const FORM_SAVE_FEATURE_LABELS = {
   whiteLabel: 'Custom CSS',
   approval: 'Approval workflow',
   multiLanguage: 'Multi-language forms',
+  integrations: 'Integrations',
 } as const satisfies Partial<Record<FeatureKey, string>>;
 
 export type FormSaveFeatureKey = keyof typeof FORM_SAVE_FEATURE_LABELS;

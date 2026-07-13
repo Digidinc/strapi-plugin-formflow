@@ -181,7 +181,10 @@ export function newConditionalConfigIssues(
 
   return newIssues.filter((newIssue) => {
     const existed = oldIssues.some(
-      (oldIssue) => oldIssue.fieldId === newIssue.fieldId && oldIssue.code === newIssue.code
+      (oldIssue) =>
+        oldIssue.fieldId === newIssue.fieldId &&
+        oldIssue.code === newIssue.code &&
+        (newIssue.code !== 'duplicate_name' || oldIssue.fieldName === newIssue.fieldName)
     );
     if (!existed) return true;
 
@@ -205,6 +208,34 @@ const uniqueFieldByName = (fields: FormField[]): Map<string, FormField> => {
       .map(([name, matches]) => [name, matches[0]])
   );
 };
+
+interface ReferencedSourceIdentity {
+  id: string;
+  isLayoutSource: boolean;
+}
+
+const referencedSourceIdentities = (
+  fields: FormField[],
+  rule: unknown
+): ReferencedSourceIdentity[] => {
+  if (!isRecord(rule) || typeof rule.field !== 'string') return [];
+
+  return runtimeFields(fields)
+    .filter((field) => field.name === rule.field && typeof field.id === 'string')
+    .map((field) => ({ id: field.id, isLayoutSource: isLayoutField(field.type) }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+};
+
+const hasSameReferencedSourceIdentity = (
+  oldFields: FormField[],
+  newFields: FormField[],
+  oldRule: unknown,
+  newRule: unknown
+): boolean =>
+  isDeepStrictEqual(
+    referencedSourceIdentities(oldFields, oldRule),
+    referencedSourceIdentities(newFields, newRule)
+  );
 
 const hasNonBijectiveConditionalIdentity = (fields: FormField[]): boolean => {
   const validFields = runtimeFields(fields);
@@ -252,6 +283,7 @@ const isSourceRenameOnly = (
   const oldSource = uniqueFieldByName(oldFields).get(oldRule.field);
   const newSource = uniqueFieldByName(newFields).get(newRule.field);
   if (!oldSource || !newSource || oldSource.id !== newSource.id) return false;
+  if (isLayoutField(oldSource.type) !== isLayoutField(newSource.type)) return false;
 
   return oldSource.name === oldRule.field && newSource.name === newRule.field;
 };
@@ -277,7 +309,12 @@ export function isAllowedUnentitledConditionalTransition(
 
     const oldRule = oldFieldById.get(newField.id)?.conditional as unknown;
     if (oldRule === undefined || oldRule === null) return false;
-    if (isDeepStrictEqual(oldRule, newRule)) continue;
+    if (
+      isDeepStrictEqual(oldRule, newRule) &&
+      hasSameReferencedSourceIdentity(validOldFields, validNewFields, oldRule, newRule)
+    ) {
+      continue;
+    }
     if (isSourceRenameOnly(oldRule, newRule, validOldFields, validNewFields)) continue;
     return false;
   }

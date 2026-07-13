@@ -77,6 +77,41 @@ const fieldsValidationResponse = (ctx: Context) => {
   };
 };
 
+const formPayloadValidationError = (data: Record<string, unknown>): string | null => {
+  if (
+    Object.prototype.hasOwnProperty.call(data, 'requiresApproval') &&
+    typeof data.requiresApproval !== 'boolean'
+  ) {
+    return 'requiresApproval must be a boolean.';
+  }
+
+  if (
+    isRecord(data.settings) &&
+    Object.prototype.hasOwnProperty.call(data.settings, 'customCss') &&
+    typeof data.settings.customCss !== 'string'
+  ) {
+    return 'settings.customCss must be a string.';
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'locales') && !isRecord(data.locales)) {
+    return 'locales must be an object.';
+  }
+
+  return null;
+};
+
+const formPayloadValidationResponse = (ctx: Context, message: string) => {
+  ctx.status = 400;
+  return {
+    error: {
+      status: 400,
+      name: 'ValidationError',
+      message,
+      details: {},
+    },
+  };
+};
+
 const duplicateFieldIdsResponse = (ctx: Context) => {
   ctx.status = 400;
   return {
@@ -244,6 +279,11 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
       return ctx.throw(400, new Error('Form title is required'));
     }
 
+    const payloadValidationError = formPayloadValidationError(data);
+    if (payloadValidationError) {
+      return formPayloadValidationResponse(ctx, payloadValidationError);
+    }
+
     if (hasFields(data) && !isFieldsPayload(data.fields)) {
       return fieldsValidationResponse(ctx);
     }
@@ -294,6 +334,11 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     if (!data || typeof data !== 'object') {
       return ctx.throw(400, new Error('Request body is required'));
+    }
+
+    const payloadValidationError = formPayloadValidationError(data);
+    if (payloadValidationError) {
+      return formPayloadValidationResponse(ctx, payloadValidationError);
     }
 
     try {
@@ -386,6 +431,10 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
       const proposedDuplicate = await formService.prepareDuplicate(id);
       if (!isRecord(proposedDuplicate)) {
         return fieldsValidationResponse(ctx);
+      }
+      const payloadValidationError = formPayloadValidationError(proposedDuplicate);
+      if (payloadValidationError) {
+        return formPayloadValidationResponse(ctx, payloadValidationError);
       }
       if (hasFields(proposedDuplicate) && !isFieldsPayload(proposedDuplicate.fields)) {
         return fieldsValidationResponse(ctx);

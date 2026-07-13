@@ -57,6 +57,23 @@ assert.equal(classifyFormApiError(makeError(500)), 'other');
 assert.equal(classifyFormApiError(makeError()), 'other');
 
 const knownFormSaveFeatures = [
+  { feature: 'webhooks', defaultLabel: 'Webhooks', tier: 'pro' },
+  {
+    feature: 'email.advanced',
+    defaultLabel: 'Additional email notifications',
+    tier: 'pro',
+  },
+  {
+    feature: 'email.customTemplate',
+    defaultLabel: 'Custom email templates and reply-to',
+    tier: 'pro',
+  },
+  { feature: 'email.autoresponder', defaultLabel: 'Email autoresponders', tier: 'pro' },
+  { feature: 'email.whiteLabel', defaultLabel: 'Email branding removal', tier: 'pro' },
+  { feature: 'spam.recaptchaV3', defaultLabel: 'reCAPTCHA v3', tier: 'pro' },
+  { feature: 'spam.turnstile', defaultLabel: 'Cloudflare Turnstile', tier: 'pro' },
+  { feature: 'spam.hcaptcha', defaultLabel: 'hCaptcha', tier: 'pro' },
+  { feature: 'spam.ipBlocklist', defaultLabel: 'IP blocklist', tier: 'pro' },
   { feature: 'multistep', defaultLabel: 'Multi-step forms', tier: 'pro' },
   { feature: 'conditionalLogic', defaultLabel: 'Conditional Logic', tier: 'pro' },
   { feature: 'fields.signature', defaultLabel: 'Signature fields', tier: 'pro' },
@@ -69,6 +86,7 @@ const knownFormSaveFeatures = [
   { feature: 'whiteLabel', defaultLabel: 'Custom CSS', tier: 'pro' },
   { feature: 'approval', defaultLabel: 'Approval workflow', tier: 'business' },
   { feature: 'multiLanguage', defaultLabel: 'Multi-language forms', tier: 'business' },
+  { feature: 'integrations', defaultLabel: 'Integrations', tier: 'pro' },
 ] as const;
 
 for (const { feature, defaultLabel, tier } of knownFormSaveFeatures) {

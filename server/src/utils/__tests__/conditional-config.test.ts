@@ -261,7 +261,7 @@ renamedLegacyTarget[1].name = 'renamed_company_name';
 assert.deepEqual(
   newConditionalConfigIssues(legacyInvalid, renamedLegacyTarget),
   [],
-  'mutable target names do not make an unchanged legacy issue new'
+  'renaming the target does not change an otherwise identical missing-source issue'
 );
 const reorderedLegacyValue = clone(legacyInvalid);
 reorderedLegacyValue[1].conditional!.value = {
@@ -279,8 +279,109 @@ assert.deepEqual(
   ['missing_source']
 );
 
+const renamedDuplicateNames = duplicateNames.map((field) => ({
+  ...field,
+  name: 'renamed_duplicate',
+}));
+assert.deepEqual(
+  newConditionalConfigIssues(duplicateNames, renamedDuplicateNames).map((issue) => [
+    issue.fieldId,
+    issue.fieldName,
+    issue.code,
+  ]),
+  [
+    ['duplicate-a', 'renamed_duplicate', 'duplicate_name'],
+    ['duplicate-b', 'renamed_duplicate', 'duplicate_name'],
+  ],
+  'renaming both duplicate names must not grandfather the new duplicate-name issues'
+);
+
 const unchanged = clone([source, target]);
 assert.equal(isAllowedUnentitledConditionalTransition([source, target], unchanged), true);
+
+assert.equal(
+  isAllowedUnentitledConditionalTransition(legacyInvalid, clone(legacyInvalid)),
+  true,
+  'an exact unchanged missing-source rule remains preservable'
+);
+assert.equal(
+  isAllowedUnentitledConditionalTransition(legacyInvalid, [
+    ...clone(legacyInvalid),
+    makeField({ id: 'unrelated-free-field', name: 'unrelated_free_field' }),
+  ]),
+  true,
+  'an unrelated free-field addition does not change an unresolved rule source set'
+);
+assert.equal(
+  isAllowedUnentitledConditionalTransition(legacyInvalid, [
+    ...clone(legacyInvalid),
+    makeField({ id: 'resolved-legacy-source', name: 'legacy_missing' }),
+  ]),
+  false,
+  'adding a free field must not silently resolve a stored missing-source rule'
+);
+
+const ambiguousLegacySourceA = makeField({ id: 'ambiguous-source-a', name: 'ambiguous_source' });
+const ambiguousLegacySourceB = makeField({ id: 'ambiguous-source-b', name: 'ambiguous_source' });
+const ambiguousLegacyTarget = makeField({
+  id: 'ambiguous-target',
+  name: 'ambiguous_target',
+  conditional: { field: 'ambiguous_source', operator: 'equals', value: 'yes' },
+});
+const ambiguousLegacyFields = [
+  ambiguousLegacySourceA,
+  ambiguousLegacySourceB,
+  ambiguousLegacyTarget,
+];
+assert.equal(
+  isAllowedUnentitledConditionalTransition(ambiguousLegacyFields, clone(ambiguousLegacyFields)),
+  true,
+  'an exact unchanged ambiguous-source rule remains preservable'
+);
+assert.equal(
+  isAllowedUnentitledConditionalTransition(ambiguousLegacyFields, [
+    ambiguousLegacySourceA,
+    { ...ambiguousLegacySourceB, name: 'renamed_ambiguous_source' },
+    ambiguousLegacyTarget,
+  ]),
+  false,
+  'renaming one duplicate must not silently bind an ambiguous rule to the remaining source'
+);
+assert.equal(
+  isAllowedUnentitledConditionalTransition(ambiguousLegacyFields, [
+    ambiguousLegacySourceA,
+    ambiguousLegacyTarget,
+  ]),
+  false,
+  'removing one duplicate must not silently bind an ambiguous rule to the remaining source'
+);
+assert.equal(
+  isAllowedUnentitledConditionalTransition(ambiguousLegacyFields, [
+    ...clone(ambiguousLegacyFields),
+    makeField({ id: 'ambiguous-source-c', name: 'ambiguous_source' }),
+  ]),
+  false,
+  'changing the ambiguous source-ID set is an entitlement-relevant transition'
+);
+
+const renamedAwaySourceWithUnchangedRule = [{ ...source, name: 'customer_kind' }, clone(target)];
+assert.equal(
+  isAllowedUnentitledConditionalTransition([source, target], renamedAwaySourceWithUnchangedRule),
+  false,
+  'an unchanged rule must not become missing when its referenced source is renamed away'
+);
+
+const activatedLayoutReference = [{ ...layoutSource, type: 'text' }, clone(layoutReference[1])];
+assert.deepEqual(
+  newConditionalConfigIssues(layoutReference, activatedLayoutReference),
+  [],
+  'changing the source type removes the old layout-source validation issue'
+);
+assert.equal(
+  isAllowedUnentitledConditionalTransition(layoutReference, activatedLayoutReference),
+  false,
+  'an unchanged legacy rule must not activate when its source changes from layout to input'
+);
 
 const removedRule = [source, { ...target, conditional: undefined }];
 assert.equal(isAllowedUnentitledConditionalTransition([source, target], removedRule), true);
