@@ -447,9 +447,7 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
       slug: form.slug,
       // Localized success message takes precedence; omitted when neither the
       // locale nor the form provides one (keeps the default response shape).
-      ...(localeContent?.successMessage
-        ? { successMessage: localeContent.successMessage }
-        : {}),
+      ...(localeContent?.successMessage ? { successMessage: localeContent.successMessage } : {}),
       fields: fields.map((field) => {
         const override = fieldOverrides[field.id] ?? {};
         return {
@@ -478,9 +476,7 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
         resetButtonText: settings.resetButtonText || 'Reset',
         layout: settings.layout || 'single',
         // Expose steps only for multi-step layouts so the frontend can render them
-        ...(settings.layout === 'multi-step' && settings.steps
-          ? { steps: settings.steps }
-          : {}),
+        ...(settings.layout === 'multi-step' && settings.steps ? { steps: settings.steps } : {}),
         // Expose custom CSS only when set so the consuming frontend can inject
         // it (e.g. into a <style> tag). Omitted entirely when empty, keeping the
         // response shape unchanged for existing forms.
@@ -604,10 +600,28 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
       { type: 'divider', label: 'Divider', icon: 'minus', category: 'layout', tier: 'free' },
 
       // Pro field types (Phase 2 validates/sanitizes; admin shows locked tiles)
-      { type: 'signature', label: 'Signature', icon: 'pen-tool', category: 'advanced', tier: 'pro' },
+      {
+        type: 'signature',
+        label: 'Signature',
+        icon: 'pen-tool',
+        category: 'advanced',
+        tier: 'pro',
+      },
       { type: 'rating', label: 'Rating / NPS', icon: 'star', category: 'advanced', tier: 'pro' },
-      { type: 'address', label: 'Address + Map', icon: 'map-pin', category: 'advanced', tier: 'pro' },
-      { type: 'richtext', label: 'Rich Text', icon: 'align-left', category: 'advanced', tier: 'pro' },
+      {
+        type: 'address',
+        label: 'Address + Map',
+        icon: 'map-pin',
+        category: 'advanced',
+        tier: 'pro',
+      },
+      {
+        type: 'richtext',
+        label: 'Rich Text',
+        icon: 'align-left',
+        category: 'advanced',
+        tier: 'pro',
+      },
       {
         type: 'calculated',
         label: 'Calculated Field',

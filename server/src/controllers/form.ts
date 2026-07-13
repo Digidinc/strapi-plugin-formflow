@@ -2,6 +2,7 @@ import type { Core } from '@strapi/strapi';
 
 import type { FormField } from '../services/form';
 import {
+  hasDuplicateProvidedFieldIds,
   newConditionalConfigIssues,
   validateConditionalConfig,
   type ConditionalConfigIssue,
@@ -37,7 +38,10 @@ const hasFields = (data: Record<string, unknown>): boolean =>
   Object.prototype.hasOwnProperty.call(data, 'fields');
 
 const isFieldsPayload = (value: unknown): value is FormField[] =>
-  Array.isArray(value) && value.every(isRecord);
+  Array.isArray(value) &&
+  value.every(
+    (field) => isRecord(field) && (field.id === undefined || typeof field.id === 'string')
+  );
 
 const licenseCan =
   (strapi: Core.Strapi) =>
@@ -66,6 +70,18 @@ const fieldsValidationResponse = (ctx: Context) => {
       status: 400,
       name: 'ValidationError',
       message: 'Fields must be an array of objects.',
+      details: {},
+    },
+  };
+};
+
+const duplicateFieldIdsResponse = (ctx: Context) => {
+  ctx.status = 400;
+  return {
+    error: {
+      status: 400,
+      name: 'ValidationError',
+      message: 'Provided field IDs must be unique.',
       details: {},
     },
   };
@@ -194,6 +210,9 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
     if (hasFields(data) && !isFieldsPayload(data.fields)) {
       return fieldsValidationResponse(ctx);
     }
+    if (hasFields(data) && hasDuplicateProvidedFieldIds(data.fields as FormField[])) {
+      return duplicateFieldIdsResponse(ctx);
+    }
 
     const newData = data as NewFormData;
     const conditionalIssues = hasFields(data)
@@ -245,6 +264,9 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
 
       if (hasFields(data) && !isFieldsPayload(data.fields)) {
         return fieldsValidationResponse(ctx);
+      }
+      if (hasFields(data) && hasDuplicateProvidedFieldIds(data.fields as FormField[])) {
+        return duplicateFieldIdsResponse(ctx);
       }
 
       const oldForm = existing as OldForm;
@@ -320,6 +342,12 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
       }
       if (hasFields(proposedDuplicate) && !isFieldsPayload(proposedDuplicate.fields)) {
         return fieldsValidationResponse(ctx);
+      }
+      if (
+        hasFields(proposedDuplicate) &&
+        hasDuplicateProvidedFieldIds(proposedDuplicate.fields as FormField[])
+      ) {
+        return duplicateFieldIdsResponse(ctx);
       }
       const newData = proposedDuplicate as NewFormData;
       const conditionalIssues = hasFields(proposedDuplicate)

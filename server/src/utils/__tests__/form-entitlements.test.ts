@@ -99,6 +99,11 @@ assert.equal(
   findFormEntitlementBlock({ fields: [signature] }, { fields: [clone(signature)] }, denyAll),
   null
 );
+expectBlock(
+  { fields: [signature] },
+  { fields: [signature, { ...signature, name: 'signature_copy' }] },
+  'fields.signature'
+);
 assert.equal(
   findFormEntitlementBlock(
     null,
@@ -108,12 +113,26 @@ assert.equal(
   null,
   'free file fields remain allowed'
 );
+const missingIdFreeField = {
+  type: 'text',
+  name: 'new_free_field',
+};
+assert.equal(
+  findFormEntitlementBlock({ fields: [source] }, { fields: [source, missingIdFreeField] }, denyAll),
+  null,
+  'new free fields without client-provided IDs remain eligible for service-generated IDs'
+);
 
 const consent = makeField({ id: 'consent-id', type: 'consent', name: 'consent' });
 expectBlock(null, { fields: [consent] }, 'compliance.consent');
 assert.equal(
   findFormEntitlementBlock({ fields: [consent] }, { fields: [clone(consent)] }, denyAll),
   null
+);
+expectBlock(
+  { fields: [consent] },
+  { fields: [consent, { ...consent, name: 'consent_copy' }] },
+  'compliance.consent'
 );
 
 expectBlock(null, { settings: { customCss: '.form { color: red; }' } }, 'whiteLabel');
@@ -304,6 +323,44 @@ void (async () => {
   assert.equal(nonArrayCreateHarness.canCalls.length, 0);
   assert.equal(nonArrayCreateHarness.createCalls.length, 0);
 
+  const duplicateIdCreateHarness = createControllerHarness();
+  const duplicateIdCreateCtx = makeContext({
+    title: 'Duplicate IDs',
+    fields: [source, { ...source, name: 'customer_kind' }],
+  });
+  const duplicateIdCreateResult = (await duplicateIdCreateHarness.controller.create(
+    duplicateIdCreateCtx
+  )) as any;
+  assert.equal(duplicateIdCreateCtx.status, 400);
+  assert.equal(duplicateIdCreateResult.error.status, 400);
+  assert.equal(duplicateIdCreateHarness.canCalls.length, 0);
+  assert.equal(duplicateIdCreateHarness.createCalls.length, 0);
+
+  const nonStringIdCreateHarness = createControllerHarness();
+  const nonStringIdCreateCtx = makeContext({
+    title: 'Invalid ID',
+    fields: [{ ...source, id: 42 }],
+  });
+  const nonStringIdCreateResult = (await nonStringIdCreateHarness.controller.create(
+    nonStringIdCreateCtx
+  )) as any;
+  assert.equal(nonStringIdCreateCtx.status, 400);
+  assert.equal(nonStringIdCreateResult.error.status, 400);
+  assert.equal(nonStringIdCreateHarness.canCalls.length, 0);
+  assert.equal(nonStringIdCreateHarness.createCalls.length, 0);
+
+  const missingIdCreateHarness = createControllerHarness();
+  const missingIdCreateCtx = makeContext({
+    title: 'Generated IDs',
+    fields: [missingIdFreeField],
+  });
+  const missingIdCreateResult = (await missingIdCreateHarness.controller.create(
+    missingIdCreateCtx
+  )) as any;
+  assert.equal(missingIdCreateCtx.status, 201);
+  assert.equal(missingIdCreateResult.error, undefined);
+  assert.equal(missingIdCreateHarness.createCalls.length, 1);
+
   const invalidUpdateHarness = createControllerHarness({
     existing: { fields: conditionalFields },
   });
@@ -327,6 +384,21 @@ void (async () => {
   assert.equal(malformedUpdateResult.error.status, 400);
   assert.equal(malformedUpdateHarness.canCalls.length, 0);
   assert.equal(malformedUpdateHarness.updateCalls.length, 0);
+
+  const duplicateIdUpdateHarness = createControllerHarness({
+    existing: { fields: [source] },
+  });
+  const duplicateIdUpdateCtx = makeContext(
+    { fields: [source, { ...source, name: 'customer_kind' }] },
+    'form-id'
+  );
+  const duplicateIdUpdateResult = (await duplicateIdUpdateHarness.controller.update(
+    duplicateIdUpdateCtx
+  )) as any;
+  assert.equal(duplicateIdUpdateCtx.status, 400);
+  assert.equal(duplicateIdUpdateResult.error.status, 400);
+  assert.equal(duplicateIdUpdateHarness.canCalls.length, 0);
+  assert.equal(duplicateIdUpdateHarness.updateCalls.length, 0);
 
   const invalidDuplicateHarness = createControllerHarness({
     proposedDuplicate: {

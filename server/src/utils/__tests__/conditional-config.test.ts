@@ -236,6 +236,24 @@ const semanticRename = [
 ];
 assert.equal(isAllowedUnentitledConditionalTransition([source, target], semanticRename), true);
 
+const duplicatedConditionalTarget = [source, target, { ...target, name: 'secondary_company_name' }];
+assert.equal(
+  isAllowedUnentitledConditionalTransition([source, target], duplicatedConditionalTarget),
+  false,
+  'a duplicated conditional target ID cannot inherit the saved rule identity'
+);
+
+const duplicatedSourceRename = [
+  source,
+  { ...source, name: 'customer_kind' },
+  { ...target, conditional: { ...target.conditional!, field: 'customer_kind' } },
+];
+assert.equal(
+  isAllowedUnentitledConditionalTransition([source, target], duplicatedSourceRename),
+  false,
+  'a duplicated source ID cannot impersonate a semantic source rename'
+);
+
 const changedValue = [
   source,
   { ...target, conditional: { ...target.conditional!, value: 'personal' } },

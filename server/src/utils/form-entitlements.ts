@@ -42,6 +42,17 @@ const PRO_FIELD_TYPES = new Set([
   'payment',
 ]);
 
+const providedIdCounts = (fields: EntitlementField[]): Map<string, number> => {
+  const counts = new Map<string, number>();
+
+  for (const field of fields) {
+    if (typeof field.id !== 'string') continue;
+    counts.set(field.id, (counts.get(field.id) ?? 0) + 1);
+  }
+
+  return counts;
+};
+
 export function findFormEntitlementBlock(
   oldForm: OldForm | null,
   newData: NewFormData,
@@ -80,6 +91,8 @@ export function findFormEntitlementBlock(
     return { entitled: false, feature: 'conditionalLogic' };
   }
 
+  const oldIdCounts = providedIdCounts(oldFields);
+  const newIdCounts = providedIdCounts(newFields);
   const oldFieldTypeById = new Map<string, string | undefined>();
   for (const field of oldFields) {
     if (typeof field.id === 'string') {
@@ -87,9 +100,21 @@ export function findFormEntitlementBlock(
     }
   }
 
+  const existingTypeFor = (field: EntitlementField): string | undefined => {
+    if (
+      typeof field.id !== 'string' ||
+      oldIdCounts.get(field.id) !== 1 ||
+      newIdCounts.get(field.id) !== 1
+    ) {
+      return undefined;
+    }
+
+    return oldFieldTypeById.get(field.id);
+  };
+
   for (const field of newFields) {
     if (!PRO_FIELD_TYPES.has(field.type ?? '')) continue;
-    const existingType = typeof field.id === 'string' ? oldFieldTypeById.get(field.id) : undefined;
+    const existingType = existingTypeFor(field);
     if (existingType !== field.type && !safeCan(`fields.${field.type}`)) {
       return { entitled: false, feature: `fields.${field.type}` };
     }
@@ -98,8 +123,7 @@ export function findFormEntitlementBlock(
   if (!safeCan('compliance.consent')) {
     for (const field of newFields) {
       if (field.type !== 'consent') continue;
-      const existingType =
-        typeof field.id === 'string' ? oldFieldTypeById.get(field.id) : undefined;
+      const existingType = existingTypeFor(field);
       if (existingType !== 'consent') {
         return { entitled: false, feature: 'compliance.consent' };
       }

@@ -30,6 +30,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const runtimeFields = (fields: FormField[]): FormField[] =>
   fields.filter((field) => isRecord(field)) as FormField[];
 
+export function hasDuplicateProvidedFieldIds(fields: Array<{ id?: unknown }>): boolean {
+  const seenIds = new Set<string>();
+
+  for (const field of fields) {
+    if (typeof field.id !== 'string') continue;
+    if (seenIds.has(field.id)) return true;
+    seenIds.add(field.id);
+  }
+
+  return false;
+}
+
 const issue = (
   field: FormField,
   code: ConditionalConfigIssue['code'],
@@ -194,6 +206,35 @@ const uniqueFieldByName = (fields: FormField[]): Map<string, FormField> => {
   );
 };
 
+const hasNonBijectiveConditionalIdentity = (fields: FormField[]): boolean => {
+  const validFields = runtimeFields(fields);
+  const idCounts = new Map<string, number>();
+  const conditionalIdentityIds = new Set<string>();
+
+  for (const field of validFields) {
+    if (typeof field.id === 'string') {
+      idCounts.set(field.id, (idCounts.get(field.id) ?? 0) + 1);
+    }
+  }
+
+  for (const target of validFields) {
+    const rule = target.conditional as unknown;
+    if (rule === undefined || rule === null) continue;
+
+    if (typeof target.id !== 'string') return true;
+    conditionalIdentityIds.add(target.id);
+    if (!isRecord(rule) || typeof rule.field !== 'string') continue;
+
+    for (const source of validFields) {
+      if (source.name !== rule.field) continue;
+      if (typeof source.id !== 'string') return true;
+      conditionalIdentityIds.add(source.id);
+    }
+  }
+
+  return [...conditionalIdentityIds].some((fieldId) => idCounts.get(fieldId) !== 1);
+};
+
 const isSourceRenameOnly = (
   oldRule: unknown,
   newRule: unknown,
@@ -221,6 +262,13 @@ export function isAllowedUnentitledConditionalTransition(
 ): boolean {
   const validOldFields = runtimeFields(oldFields);
   const validNewFields = runtimeFields(newFields);
+  if (
+    hasNonBijectiveConditionalIdentity(validOldFields) ||
+    hasNonBijectiveConditionalIdentity(validNewFields)
+  ) {
+    return false;
+  }
+
   const oldFieldById = new Map(validOldFields.map((field) => [field.id, field] as const));
 
   for (const newField of validNewFields) {
