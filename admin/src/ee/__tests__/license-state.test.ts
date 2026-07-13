@@ -5,7 +5,10 @@ import assert from 'node:assert/strict';
 import {
   accessPresentation,
   featureAccess,
+  licenseNoticeIdentity,
   parseLicenseSnapshot,
+  reconcileDismissedNotice,
+  resolveFeatureAccess,
   retryDelay,
   type LicenseSnapshot,
 } from '../license-state';
@@ -51,6 +54,29 @@ assert.deepEqual(accessPresentation('checking'), {
 assert.equal(accessPresentation('unentitled').showUpgrade, true);
 assert.equal(accessPresentation('unavailable').showRetry, true);
 assert.equal(accessPresentation('entitled').disabled, false);
+
+assert.equal(resolveFeatureAccess('entitled'), 'entitled');
+assert.equal(resolveFeatureAccess('unentitled'), 'unentitled');
+assert.equal(resolveFeatureAccess('checking', undefined, true), 'checking');
+assert.equal(resolveFeatureAccess('unavailable', undefined, false), 'unavailable');
+assert.equal(resolveFeatureAccess('entitled', undefined, false), 'unentitled');
+assert.equal(resolveFeatureAccess('unentitled', undefined, true), 'entitled');
+assert.equal(resolveFeatureAccess('checking', 'entitled', false), 'entitled');
+
+const checkingNotice = licenseNoticeIdentity('checking', 'free', null);
+const unavailableNotice = licenseNoticeIdentity('unavailable', 'free', null);
+const firstGraceNotice = licenseNoticeIdentity('resolved', 'grace', '2026-07-13T12:00:00Z');
+const nextGraceNotice = licenseNoticeIdentity('resolved', 'grace', '2026-07-14T12:00:00Z');
+
+assert.equal(checkingNotice, 'checking');
+assert.equal(unavailableNotice, 'unavailable');
+assert.notEqual(firstGraceNotice, nextGraceNotice);
+assert.equal(licenseNoticeIdentity('resolved', 'active', null), null);
+assert.equal(reconcileDismissedNotice(checkingNotice, checkingNotice), checkingNotice);
+assert.equal(reconcileDismissedNotice(checkingNotice, unavailableNotice), null);
+assert.equal(reconcileDismissedNotice(firstGraceNotice, nextGraceNotice), null);
+assert.equal(reconcileDismissedNotice(unavailableNotice, null), null);
+
 assert.throws(() => parseLicenseSnapshot({ tier: 'pro' }));
 assert.deepEqual([0, 1, 2, 3, 20].map(retryDelay), [250, 500, 1000, 1000, 1000]);
 

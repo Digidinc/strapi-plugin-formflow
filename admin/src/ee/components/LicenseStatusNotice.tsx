@@ -4,6 +4,11 @@ import { Alert, Button } from '@strapi/design-system';
 import { useIntl } from 'react-intl';
 
 import { useLicense } from '../hooks/useLicense';
+import {
+  licenseNoticeIdentity,
+  reconcileDismissedNotice,
+  type LicenseNoticeIdentity,
+} from '../license-state';
 
 const CHECKING_NOTICE_DELAY_MS = 300;
 
@@ -15,6 +20,10 @@ export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProp
   const { formatDate, formatMessage } = useIntl();
   const { resolution, state: licenseState, graceUntil, isRefreshing, refresh } = useLicense();
   const [showChecking, setShowChecking] = useState(false);
+  const [dismissedNotice, setDismissedNotice] = useState<LicenseNoticeIdentity>(null);
+  const currentState = licenseState();
+  const deadline = graceUntil();
+  const noticeIdentity = licenseNoticeIdentity(resolution, currentState, deadline);
 
   useEffect(() => {
     if (resolution !== 'checking') {
@@ -26,10 +35,17 @@ export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProp
     return () => window.clearTimeout(timeoutId);
   }, [resolution]);
 
+  useEffect(() => {
+    setDismissedNotice((current) => reconcileDismissedNotice(current, noticeIdentity));
+  }, [noticeIdentity]);
+
   const closeLabel = formatMessage({
     id: 'formflow.common.close',
     defaultMessage: 'Close',
   });
+  const handleClose = () => setDismissedNotice(noticeIdentity);
+
+  if (noticeIdentity === null || dismissedNotice === noticeIdentity) return null;
 
   if (resolution === 'checking') {
     if (!showChecking) return null;
@@ -37,6 +53,7 @@ export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProp
     return (
       <Alert
         closeLabel={closeLabel}
+        onClose={handleClose}
         padding={compact ? 3 : 4}
         marginBottom={compact ? 0 : 4}
         variant="default"
@@ -67,6 +84,7 @@ export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProp
           </Button>
         }
         closeLabel={closeLabel}
+        onClose={handleClose}
         padding={compact ? 3 : 4}
         marginBottom={compact ? 0 : 4}
         variant="warning"
@@ -80,14 +98,14 @@ export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProp
     );
   }
 
-  if (licenseState() === 'grace') {
-    const deadline = graceUntil();
+  if (currentState === 'grace') {
     const timestamp = deadline === null ? Number.NaN : Date.parse(deadline);
 
     if (Number.isFinite(timestamp)) {
       return (
         <Alert
           closeLabel={closeLabel}
+          onClose={handleClose}
           padding={compact ? 3 : 4}
           marginBottom={compact ? 0 : 4}
           variant="warning"

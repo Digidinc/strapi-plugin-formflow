@@ -5,7 +5,7 @@ import { useIntl } from 'react-intl';
 
 import { FEATURE_TIER, type FeatureKey } from '../feature-map';
 import { useLicense } from '../hooks/useLicense';
-import { accessPresentation, type FeatureAccess } from '../license-state';
+import { accessPresentation, resolveFeatureAccess, type FeatureAccess } from '../license-state';
 
 export interface GatedButtonProps {
   /** State-aware access. New callers should prefer this over the legacy `can` prop. */
@@ -42,13 +42,7 @@ export const GatedButton = ({
   const { formatMessage } = useIntl();
   const { access: resolveAccess } = useLicense();
   const contextAccess = resolveAccess(feature);
-  const resolvedAccess =
-    access ??
-    (can === true
-      ? 'entitled'
-      : contextAccess === 'checking' || contextAccess === 'unavailable'
-        ? contextAccess
-        : 'unentitled');
+  const resolvedAccess = resolveFeatureAccess(contextAccess, access, can);
   const presentation = accessPresentation(resolvedAccess);
 
   if (!presentation.disabled) {

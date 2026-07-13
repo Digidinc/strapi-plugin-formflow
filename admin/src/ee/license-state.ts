@@ -4,6 +4,7 @@ import { FEATURE_TIER, type FeatureKey } from './feature-map';
 
 export type LicenseResolution = 'checking' | 'resolved' | 'unavailable';
 export type FeatureAccess = 'checking' | 'entitled' | 'unentitled' | 'unavailable';
+export type LicenseNoticeIdentity = 'checking' | 'unavailable' | `grace:${string}` | null;
 
 export interface AccessPresentation {
   disabled: boolean;
@@ -65,6 +66,35 @@ export function featureAccess(
   if (!snapshot || snapshot.resolution === 'checking') return 'checking';
   if (snapshot.resolution === 'unavailable') return 'unavailable';
   return snapshot.features[feature] === true ? 'entitled' : 'unentitled';
+}
+
+export function resolveFeatureAccess(
+  contextAccess: FeatureAccess,
+  access?: FeatureAccess,
+  can?: boolean
+): FeatureAccess {
+  if (access !== undefined) return access;
+  if (can === undefined) return contextAccess;
+  if (contextAccess === 'checking' || contextAccess === 'unavailable') return contextAccess;
+  return can ? 'entitled' : 'unentitled';
+}
+
+export function licenseNoticeIdentity(
+  resolution: LicenseResolution,
+  state: LicenseSnapshot['state'],
+  graceUntil: string | null
+): LicenseNoticeIdentity {
+  if (resolution === 'checking') return 'checking';
+  if (resolution === 'unavailable') return 'unavailable';
+  if (state === 'grace') return `grace:${graceUntil ?? 'missing'}`;
+  return null;
+}
+
+export function reconcileDismissedNotice(
+  dismissedIdentity: LicenseNoticeIdentity,
+  currentIdentity: LicenseNoticeIdentity
+): LicenseNoticeIdentity {
+  return dismissedIdentity === currentIdentity ? dismissedIdentity : null;
 }
 
 export function accessPresentation(access: FeatureAccess): AccessPresentation {
