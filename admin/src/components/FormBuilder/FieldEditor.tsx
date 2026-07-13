@@ -70,7 +70,8 @@ const generateFieldName = (label: string): string => {
  */
 export const FieldEditor = ({ field, allFields, isOpen, onChange, onClose }: FieldEditorProps) => {
   const { formatMessage } = useIntl();
-  const { can } = useLicense();
+  const { access } = useLicense();
+  const conditionalAccess = access('conditionalLogic');
 
   // Tracks whether the user has manually edited the Name for the field currently
   // being edited. `field.name` is the submission-data key, so once the user takes
@@ -99,10 +100,7 @@ export const FieldEditor = ({ field, allFields, isOpen, onChange, onClose }: Fie
 
   // Other fields (excluding self and layout-only fields) usable as conditions.
   const conditionSourceFields = useMemo(
-    () =>
-      allFields.filter(
-        (f) => f.id !== field?.id && !LAYOUT_FIELD_TYPES.includes(f.type)
-      ),
+    () => allFields.filter((f) => f.id !== field?.id && !LAYOUT_FIELD_TYPES.includes(f.type)),
     [allFields, field]
   );
 
@@ -240,7 +238,8 @@ export const FieldEditor = ({ field, allFields, isOpen, onChange, onClose }: Fie
                     : field.type === 'paragraph'
                       ? formatMessage({
                           id: getTranslation('fieldEditor.label.hint.paragraph'),
-                          defaultMessage: 'A short label; the paragraph text is set in Content below',
+                          defaultMessage:
+                            'A short label; the paragraph text is set in Content below',
                         })
                       : formatMessage({
                           id: getTranslation('fieldEditor.label.hint'),
@@ -409,15 +408,12 @@ export const FieldEditor = ({ field, allFields, isOpen, onChange, onClose }: Fie
                   name="excludeFromExport"
                   hint={formatMessage({
                     id: getTranslation('fieldEditor.excludeFromExport.hint'),
-                    defaultMessage:
-                      'Keep this field out of CSV and JSON submission exports',
+                    defaultMessage: 'Keep this field out of CSV and JSON submission exports',
                   })}
                 >
                   <Checkbox
                     checked={field.excludeFromExport === true}
-                    onCheckedChange={(checked: boolean) =>
-                      onChange({ excludeFromExport: checked })
-                    }
+                    onCheckedChange={(checked: boolean) => onChange({ excludeFromExport: checked })}
                   >
                     {formatMessage({
                       id: getTranslation('fieldEditor.excludeFromExport.label'),
@@ -596,8 +592,9 @@ export const FieldEditor = ({ field, allFields, isOpen, onChange, onClose }: Fie
                 <ConditionalLogicBuilder
                   conditional={field.conditional}
                   conditionSourceFields={conditionSourceFields}
+                  targetField={field}
                   onChange={(conditional) => onChange({ conditional })}
-                  canEdit={can('conditionalLogic')}
+                  access={conditionalAccess}
                 />
               </>
             )}
