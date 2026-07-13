@@ -32,7 +32,7 @@ A drag-and-drop form builder with a rich field registry:
 ### Validation & logic
 
 - Per-field validation rules with custom error messages
-- Conditional visibility (show/hide fields based on another field's value)
+- Conditional visibility based on another field's value (**Pro**; also included in **Business**)
 - Multi-step / wizard forms with per-step grouping and validation
 
 ### Submissions
