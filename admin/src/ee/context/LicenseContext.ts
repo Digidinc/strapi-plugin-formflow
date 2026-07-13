@@ -2,6 +2,7 @@
 import { createContext } from 'react';
 
 import type { FeatureKey } from '../feature-map';
+import type { FeatureAccess, LicenseResolution, LicenseSnapshot } from '../license-state';
 
 /**
  * Shape exposed to consumers via {@link useLicense}. The accessors are functions
@@ -9,28 +10,34 @@ import type { FeatureKey } from '../feature-map';
  * the entitlement map on every render.
  */
 export interface LicenseContextValue {
+  access: (feature: FeatureKey) => FeatureAccess;
   can: (feature: FeatureKey) => boolean;
-  tier: () => string;
-  state: () => string;
+  tier: () => LicenseSnapshot['tier'];
+  state: () => LicenseSnapshot['state'];
+  resolution: LicenseResolution;
   graceUntil: () => string | null;
   isLoading: boolean;
+  isRefreshing: boolean;
   error: Error | null;
+  refresh: () => Promise<void>;
 }
 
 /**
- * Default value is the free/loading sentinel: `can()` is always `false`, the
- * tier/state collapse to `'free'`, and `isLoading` is `true`. This is the
- * graceful-degradation default that applies before the provider resolves, on a
- * fetch error, or when `useLicense()` is called outside any `<LicenseProvider>`
- * — it never crashes and never over-grants.
+ * The default value is an unresolved sentinel. It never over-grants, but it
+ * keeps unknown access distinct from a verified free plan until the provider
+ * resolves.
  */
 export const LicenseContext = createContext<LicenseContextValue>({
+  access: () => 'checking',
   can: () => false,
   tier: () => 'free',
   state: () => 'free',
+  resolution: 'checking',
   graceUntil: () => null,
   isLoading: true,
+  isRefreshing: false,
   error: null,
+  refresh: async () => undefined,
 });
 // DCE-guard: side-effect assignment keeps the sentinel string '__EE_ADMIN__' in
 // the bundled runtime JS so check-ee-bundled.mjs can verify it survived bundling.
