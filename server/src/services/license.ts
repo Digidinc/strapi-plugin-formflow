@@ -27,6 +27,7 @@ export interface LicenseService {
   init(): Promise<void>;
   destroy(): void;
   refresh(): Promise<void>;
+  startFallbackScheduler(onRefreshed: () => Promise<void>): void;
   whenReady(): Promise<void>;
   resolution(): LicenseResolution;
   can(feature: string): boolean;
@@ -44,6 +45,7 @@ interface EeLicenseInstance {
   init(): Promise<void>;
   destroy(): void;
   refresh(): Promise<void>;
+  startFallbackScheduler(onRefreshed: () => Promise<void>): void;
   whenReady(): Promise<void>;
   resolution(): LicenseResolution;
   can(feature: string): boolean;
@@ -102,6 +104,10 @@ const licenseService = ({ strapi }: { strapi: Core.Strapi }): LicenseService => 
 
     refresh(): Promise<void> {
       return eeImpl ? eeImpl.refresh() : Promise.resolve();
+    },
+
+    startFallbackScheduler(onRefreshed: () => Promise<void>): void {
+      eeImpl?.startFallbackScheduler(onRefreshed);
     },
 
     whenReady(): Promise<void> {

@@ -1,7 +1,5 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 import type { Core } from '@strapi/strapi';
-import * as XLSX from 'xlsx';
-import PDFDocument from 'pdfkit';
 
 import type { ExportOptions } from '../../services/export';
 
@@ -98,6 +96,7 @@ export async function exportToXLSX(
   formId: string,
   opts: ExportOptions
 ): Promise<Buffer> {
+  const XLSX = await import('xlsx');
   const exportService = strapi.plugin('formflow').service('export');
   const csv: string = await exportService.exportToCSV(formId, opts);
 
@@ -122,6 +121,7 @@ export async function exportToPDF(
   formId: string,
   opts: ExportOptions
 ): Promise<Buffer> {
+  const { default: PDFDocument } = await import('pdfkit');
   const exportService = strapi.plugin('formflow').service('export');
   const formService = strapi.plugin('formflow').service('form');
 
@@ -160,8 +160,7 @@ export async function exportToPDF(
 
     const [headerRow, ...dataRows] = rows;
     const columnCount = headerRow.length || 1;
-    const pageWidth =
-      doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const columnWidth = pageWidth / columnCount;
 
     // Render one CSV row as a horizontal band of fixed-width cells. PDFKit lays
@@ -246,10 +245,7 @@ export async function registerScheduledExport(
  * Remove the scheduled-export cron entry for a form. A no-op when no entry
  * exists or the cron service is unavailable; never throws.
  */
-export async function removeScheduledExport(
-  strapi: Core.Strapi,
-  formId: string
-): Promise<void> {
+export async function removeScheduledExport(strapi: Core.Strapi, formId: string): Promise<void> {
   try {
     if (strapi.cron && typeof strapi.cron.remove === 'function') {
       strapi.cron.remove(cronNameFor(formId));
@@ -273,10 +269,18 @@ async function runScheduledExport(
   strapi: Core.Strapi,
   config: ScheduledExportConfig
 ): Promise<void> {
+  if (!strapi.plugin('formflow').service('license').can('export.advanced')) {
+    strapi.log.info('[FormFlow] Scheduled export skipped: Pro entitlement unavailable.');
+    return;
+  }
+
   const exportService = strapi.plugin('formflow').service('export');
   const formService = strapi.plugin('formflow').service('form');
 
-  const form = (await formService.findOne(config.formId)) as { slug?: string; title?: string } | null;
+  const form = (await formService.findOne(config.formId)) as {
+    slug?: string;
+    title?: string;
+  } | null;
   const dateStr = new Date().toISOString().split('T')[0];
   const baseFilename = `${form?.slug || 'submissions'}-${dateStr}`;
 

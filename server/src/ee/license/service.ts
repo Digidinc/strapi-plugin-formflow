@@ -59,6 +59,7 @@ export interface LicenseService {
   init(): Promise<void>;
   destroy(): void;
   refresh(): Promise<void>;
+  startFallbackScheduler(onRefreshed: () => Promise<void>): void;
   whenReady(): Promise<void>;
   resolution(): LicenseResolution;
   tier(): Tier;
@@ -408,16 +409,6 @@ export function createLicenseService(
       // Fire-and-forget the first validation so plugin load is never blocked.
       _resolution = hasUsableCache(now) ? 'resolved' : 'checking';
       _initialResolution = refresh();
-
-      // Re-validate daily to pick up revocations and tier changes.
-      _refreshTimer = setInterval(() => {
-        refresh().catch((err) =>
-          strapi.log.warn('[FormFlow License] Scheduled validation failed:', err)
-        );
-      }, DAY_MS);
-      // Never keep the process alive just for license refresh (one-off CLI runs
-      // may load the plugin without ever invoking the destroy hook).
-      _refreshTimer.unref?.();
     } catch (error) {
       const now = dependencies.now();
       if (hasUsableCache(now)) {
@@ -432,6 +423,21 @@ export function createLicenseService(
       _initialResolution = Promise.resolve();
       strapi.log.warn('[FormFlow License] init failed:', error);
     }
+  }
+
+  function startFallbackScheduler(onRefreshed: () => Promise<void>): void {
+    if (_refreshTimer !== null || !readLicenseKey()) {
+      return;
+    }
+
+    _refreshTimer = setInterval(() => {
+      refresh()
+        .then(onRefreshed)
+        .catch((err) => strapi.log.warn('[FormFlow License] Scheduled validation failed:', err));
+    }, DAY_MS);
+    // Never keep the process alive just for license refresh (one-off CLI runs
+    // may load the plugin without ever invoking the destroy hook).
+    _refreshTimer.unref?.();
   }
 
   function destroy(): void {
@@ -457,6 +463,7 @@ export function createLicenseService(
     init,
     destroy,
     refresh,
+    startFallbackScheduler,
     whenReady: () => _initialResolution,
     resolution: () => _resolution,
     tier: () => _tier,
