@@ -457,6 +457,69 @@ expectBlock(
   }),
   'email.autoresponder'
 );
+const legacyFirstTemplateNotification = {
+  ...legacyExtraNotification,
+  template: 'First {{data}}',
+};
+const legacyAdditionalTemplateNotification = {
+  ...legacyExtraNotificationB,
+  template: 'Additional {{data}}',
+};
+// Save the exact cleanup first; generated-ID normalization plus free edits is ambiguous until then.
+expectBlock(
+  oldWithSettings({
+    emailNotifications: [legacyFirstTemplateNotification, legacyAdditionalTemplateNotification],
+  }),
+  withSettings({
+    emailNotifications: [
+      {
+        ...legacyFirstTemplateNotification,
+        id: 'generated-retained-first-notification',
+        subject: 'Freely edited retained first',
+      },
+    ],
+  }),
+  'email.customTemplate'
+);
+for (const { oldPremium, deletedPremium, feature } of [
+  {
+    oldPremium: { template: 'First {{data}}' },
+    deletedPremium: { template: 'Deleted {{data}}' },
+    feature: 'email.customTemplate',
+  },
+  {
+    oldPremium: { replyTo: 'first@example.com' },
+    deletedPremium: { replyTo: 'deleted@example.com' },
+    feature: 'email.customTemplate',
+  },
+  {
+    oldPremium: {},
+    deletedPremium: { isAutoresponder: true, toField: 'customer_email' },
+    feature: 'email.autoresponder',
+  },
+  {
+    oldPremium: {},
+    deletedPremium: { omitBranding: true },
+    feature: 'email.whiteLabel',
+  },
+] as const) {
+  const oldFirst = { ...legacyExtraNotification, ...oldPremium };
+  const deletedAdditional = { ...legacyExtraNotificationB, ...deletedPremium };
+  expectBlock(
+    oldWithSettings({ emailNotifications: [oldFirst, deletedAdditional] }),
+    withSettings({
+      emailNotifications: [
+        {
+          ...oldFirst,
+          id: 'generated-retained-first-notification',
+          subject: 'Freely edited retained first',
+          ...deletedPremium,
+        },
+      ],
+    }),
+    feature
+  );
+}
 expectAllowed(
   oldWithSettings({
     emailNotifications: [legacyExtraNotification, legacyPremiumNotification],
@@ -464,7 +527,8 @@ expectAllowed(
   withSettings({ emailNotifications: [clone(legacyPremiumNotification)] }),
   'removing a legacy first notification may promote the retained premium record into the free slot'
 );
-expectAllowed(
+// A promotion plus a simultaneous free-field edit cannot prove which id-less legacy record survived.
+expectBlock(
   oldWithSettings({
     emailNotifications: [legacyExtraNotification, legacyPremiumNotification],
   }),
@@ -477,7 +541,7 @@ expectAllowed(
       },
     ],
   }),
-  'legacy promotion can generate an id and edit free properties while premium properties stay fixed'
+  'email.customTemplate'
 );
 const legacyDeletedFirstWithTemplate = {
   ...legacyExtraNotification,
@@ -526,7 +590,8 @@ const legacyEquivalentPremiumNotificationB = {
   ...legacyExtraNotificationB,
   template: 'Shared {{data}}',
 };
-expectAllowed(
+// Equivalent premium values do not establish identity when the id-less first record may remain.
+expectBlock(
   oldWithSettings({
     emailNotifications: [
       legacyExtraNotification,
@@ -543,7 +608,7 @@ expectAllowed(
       },
     ],
   }),
-  'legacy promotion may choose any candidate with an equivalent complete premium projection'
+  'email.customTemplate'
 );
 const legacyFirstWithTemplate = {
   enabled: true,

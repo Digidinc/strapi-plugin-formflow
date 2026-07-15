@@ -109,9 +109,6 @@ const isOrderedDeepEqualSubsequence = (
 const emailFreeProjection = (notification: Record<string, unknown>): Record<string, unknown> =>
   Object.fromEntries(Object.entries(notification).filter(([key]) => !EMAIL_PREMIUM_KEYS.has(key)));
 
-const emailPremiumProjection = (notification: Record<string, unknown>): Record<string, unknown> =>
-  Object.fromEntries(Object.entries(notification).filter(([key]) => EMAIL_PREMIUM_KEYS.has(key)));
-
 const storedId = (value: Record<string, unknown>): string | undefined =>
   typeof value.id === 'string' && value.id !== '' ? value.id : undefined;
 
@@ -168,10 +165,6 @@ const pairNotifications = (
   additionalMatches: NotificationPair[] | null
 ): NotificationPair[] => {
   const oldRecords = oldNotifications.filter(isRecord);
-  const oldPromotionRecords =
-    newNotifications.length < oldNotifications.length
-      ? oldNotifications.slice(1).filter(isRecord)
-      : [];
   const reservedAdditionalByIndex = new Map<number, Record<string, unknown>>();
   for (const [matchIndex, match] of (additionalMatches ?? []).entries()) {
     if (match.oldNotification) {
@@ -191,9 +184,6 @@ const pairNotifications = (
     const availableOldRecords = oldRecords.filter(
       (candidate) => !usedOldNotifications.has(candidate)
     );
-    const availablePromotionRecords = oldPromotionRecords.filter(
-      (candidate) => !usedOldNotifications.has(candidate)
-    );
     const newId = storedId(newValue);
     const oldAtIndex = oldNotifications[index];
     const persistedIdMatch =
@@ -208,11 +198,6 @@ const pairNotifications = (
         !hasOwn(candidate, 'id') &&
         isDeepEqualRetainedRecord(emailFreeProjection(candidate), emailFreeProjection(newValue))
     );
-    const legacyPremiumCandidates = availablePromotionRecords.filter(
-      (candidate) =>
-        !hasOwn(candidate, 'id') &&
-        isDeepStrictEqual(emailPremiumProjection(candidate), emailPremiumProjection(newValue))
-    );
     const legacyFirstFallback =
       index === 0 &&
       newNotifications.length >= oldNotifications.length &&
@@ -226,7 +211,6 @@ const pairNotifications = (
       persistedIdMatch ??
       (index === 0 && legacyExactCandidates.length === 1 ? legacyExactCandidates[0] : undefined) ??
       (index === 0 && legacyFreeCandidates.length === 1 ? legacyFreeCandidates[0] : undefined) ??
-      (index === 0 ? legacyPremiumCandidates[0] : undefined) ??
       legacyFirstFallback;
     if (oldNotification) usedOldNotifications.add(oldNotification);
 
