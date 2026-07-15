@@ -2,7 +2,7 @@ import { randomBytes } from 'crypto';
 
 import type { Core } from '@strapi/strapi';
 
-import { partitionFieldsByVisibility } from '../utils/validation-rules';
+import { isEmptyValue, partitionFieldsByVisibility } from '../utils/validation-rules';
 import type { ValidatableField, UploadedFileMeta, UploadedFilesMap } from './validation';
 
 /**
@@ -300,7 +300,18 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
         visibilityData[field.name] = files[field.name];
       }
     }
-    const { visible: visibleFields } = partitionFieldsByVisibility(formFields, visibilityData);
+    const { visible: visibleFields, hidden: hiddenFields } = partitionFieldsByVisibility(
+      formFields,
+      visibilityData
+    );
+    const discardedHiddenFields = hiddenFields
+      .filter((field) => !isEmptyValue(visibilityData[field.name]))
+      .map((field) => field.name);
+    if (discardedHiddenFields.length > 0) {
+      strapi.log.warn(
+        `[FormFlow] Discarding non-empty values for fields hidden by conditional visibility: ${JSON.stringify(discardedHiddenFields)}. Their rule failed or a source field resolved hidden or invalid.`
+      );
+    }
 
     // Validate non-file submission data against form field definitions.
     const validationResult = validationService.validate(visibleFields, visibilityData);

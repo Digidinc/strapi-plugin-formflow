@@ -268,6 +268,11 @@ export const evaluateConditional = (
 };
 
 /**
+ * Evaluate one rule directly against submission data. This flat helper cannot
+ * determine whether the referenced source field is itself visible; callers
+ * evaluating a form must use {@link partitionFieldsByVisibility}, which is the
+ * authoritative graph-aware entry point.
+ *
  * Decide whether a field is currently visible given the submission data.
  * A field with no conditional rule is always visible. A field with a
  * conditional rule is visible only when that rule evaluates truthy.

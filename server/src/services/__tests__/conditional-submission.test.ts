@@ -16,6 +16,7 @@ interface UpdateCall {
 const createdRows: CreateCall[] = [];
 const updatedRows: UpdateCall[] = [];
 const uploadCalls: unknown[] = [];
+const warningCalls: unknown[][] = [];
 
 const form: SubmittableForm = {
   documentId: 'conditional-form-id',
@@ -237,7 +238,9 @@ const strapi: any = {
   },
   log: {
     error() {},
-    warn() {},
+    warn(...args: unknown[]) {
+      warningCalls.push(args);
+    },
   },
 };
 
@@ -598,6 +601,7 @@ void (async () => {
   const rowsBeforeHiddenChain = createdRows.length;
   const uploadsBeforeHiddenChain = uploadCalls.length;
   const consentUpdatesBeforeHiddenChain = updatedRows.length;
+  const warningsBeforeHiddenChain = warningCalls.length;
   await service.submit(
     form.slug,
     {
@@ -619,6 +623,15 @@ void (async () => {
   assert.equal(hiddenChainData.chain_file, undefined);
   assert.equal(uploadCalls.length, uploadsBeforeHiddenChain);
   assert.equal(updatedRows.length, consentUpdatesBeforeHiddenChain);
+  assert.equal(warningCalls.length, warningsBeforeHiddenChain + 1);
+  const hiddenChainWarning = String(warningCalls[warningCalls.length - 1]?.[0]);
+  for (const fieldName of ['chain_gate', 'chain_text', 'chain_consent', 'chain_file']) {
+    assert.match(hiddenChainWarning, new RegExp(`\\b${fieldName}\\b`));
+  }
+  assert.doesNotMatch(
+    hiddenChainWarning,
+    /unlock|not-an-email|hidden\.exe|application\/x-msdownload|2097152/
+  );
 
   // The same descendants remain available when every source in the chain is
   // legitimately visible and its condition passes.

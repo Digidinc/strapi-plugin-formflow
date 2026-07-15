@@ -74,6 +74,11 @@ export type UploadedFilesMap = Record<string, UploadedFileMeta | UploadedFileMet
 const validationService = ({ strapi }: { strapi: Core.Strapi }) => ({
   /**
    * Validate form submission data against field definitions
+   *
+   * Conditional checks here are intentionally flat. Full-submission callers
+   * must first pass fields through `partitionFieldsByVisibility`; `submit()`
+   * does so, while `validateSubset()` resolves the graph before calling this
+   * method with the visible subset.
    * @param fields - Array of form field definitions
    * @param data - Submission data to validate
    * @returns ValidationResult with valid flag and error messages by field name
@@ -196,6 +201,10 @@ const validationService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
   /**
    * Validate uploaded files against the form's `file` field definitions.
+   *
+   * Conditional checks here are intentionally flat. Full-submission callers
+   * must first pass fields through `partitionFieldsByVisibility`; `submit()`
+   * does so. Step validation defers file fields and does not call this method.
    *
    * Runs BEFORE the files are uploaded to the media library, so oversize or
    * disallowed files are rejected without ever being persisted. Enforces:
