@@ -65,11 +65,213 @@ function requirePattern(file: string, source: string, pattern: RegExp, message: 
   }
 }
 
+const READONLY_RENDER_MESSAGE =
+  'readonly LockedSection children must be an immediate render function that binds disabled';
+const READONLY_CONSUME_MESSAGE =
+  'readonly LockedSection render children must consume their disabled binding';
+const LOCKED_SECTION_MODE_MESSAGE = 'LockedSection mode must be a readonly or replace literal';
+const LOCKED_SECTION_SPREAD_MESSAGE = 'LockedSection opening tags must not use prop spreads';
+
+function stripBalancedWrapper(source: string): string {
+  let value = source.trim();
+  while (value.startsWith('(') && value.endsWith(')')) {
+    let depth = 0;
+    let wrapsWholeValue = true;
+    for (let index = 0; index < value.length; index += 1) {
+      if (value[index] === '(') depth += 1;
+      if (value[index] === ')') depth -= 1;
+      if (depth === 0 && index < value.length - 1) wrapsWholeValue = false;
+      if (depth < 0) wrapsWholeValue = false;
+    }
+    if (!wrapsWholeValue || depth !== 0) break;
+    value = value.slice(1, -1).trim();
+  }
+  return value;
+}
+
+function depthZeroOrOperands(source: string): string[] | undefined {
+  const expression = stripBalancedWrapper(source);
+  const operands: string[] = [];
+  let depth = 0;
+  let operandStart = 0;
+
+  for (let index = 0; index < expression.length; index += 1) {
+    const character = expression[index];
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (depth < 0) return undefined;
+    if (
+      depth === 0 &&
+      (character === ',' ||
+        character === ':' ||
+        (character === '?' && expression[index + 1] !== '.'))
+    )
+      return undefined;
+    if (depth === 0 && character === '|' && expression[index + 1] === '|') {
+      operands.push(expression.slice(operandStart, index));
+      operandStart = index + 2;
+      index += 1;
+    }
+  }
+
+  if (depth !== 0) return undefined;
+  operands.push(expression.slice(operandStart));
+  return operands.map(stripBalancedWrapper);
+}
+
+function usesBindingAsLock(source: string, binding: string): boolean {
+  const unquoted = source.replace(/(["'`])(?:\\.|(?!\1)[\s\S])*?\1/g, (literal) =>
+    literal.replace(/[^\n]/g, ' ')
+  );
+  const identifier = `\\b${binding}\\b`;
+  const controlProps = unquoted.matchAll(/(?:^|[\s<])(?:disabled|readOnly)\s*=\s*\{([^{}]*)\}/g);
+  const bindingLocksControl = [...controlProps].some((match) => {
+    const operands = depthZeroOrOperands(match[1] ?? '');
+    return operands?.some((operand) => operand === binding) ?? false;
+  });
+  const adapter = new RegExp(
+    `\\b(?:renderNotification\\(\\s*${identifier}\\s*\\)|renderLocalesList\\(\\s*${identifier}\\s*,)`
+  );
+  return bindingLocksControl || adapter.test(unquoted);
+}
+
+function lockedSectionOpeningTags(source: string): Array<{ start: number; text: string }> {
+  const tags: Array<{ start: number; text: string }> = [];
+  for (const match of source.matchAll(/<LockedSection\b/g)) {
+    const start = match.index ?? 0;
+    let quote: '"' | "'" | '`' | undefined;
+    let braceDepth = 0;
+
+    for (let index = start + match[0].length; index < source.length; index += 1) {
+      const character = source[index];
+      if (quote) {
+        if (character === '\\') index += 1;
+        else if (character === quote) quote = undefined;
+      } else if (character === '"' || character === "'" || character === '`') quote = character;
+      else if (character === '{') braceDepth += 1;
+      else if (character === '}') braceDepth -= 1;
+      else if (character === '>' && braceDepth === 0) {
+        tags.push({ start, text: source.slice(start, index + 1) });
+        break;
+      }
+    }
+  }
+  return tags;
+}
+
+function readonlyLockedSectionViolations(file: string, source: string): Violation[] {
+  const normalizedSource = withoutComments(source);
+  const results: Violation[] = [];
+  const literalMode =
+    /(?:^|\s)mode\s*=\s*(?:["'](?:readonly|replace)["']|\{\s*["'](?:readonly|replace)["']\s*\})/;
+  const readonlyMode = /(?:^|\s)mode\s*=\s*(?:["']readonly["']|\{\s*["']readonly["']\s*\})/;
+
+  for (const openingTag of lockedSectionOpeningTags(normalizedSource)) {
+    const { start, text } = openingTag;
+    const line = lineAt(normalizedSource, start);
+    if (/(?:^|\s)\{\s*\.\.\./.test(text)) {
+      results.push({ file, line, message: LOCKED_SECTION_SPREAD_MESSAGE });
+      continue;
+    }
+    if (/(?:^|\s)mode\s*=/.test(text) && !literalMode.test(text)) {
+      results.push({ file, line, message: LOCKED_SECTION_MODE_MESSAGE });
+      continue;
+    }
+    if (!readonlyMode.test(text)) continue;
+
+    const bodyStart = start + text.length;
+    const bodyEnd = normalizedSource.indexOf('</LockedSection>', bodyStart);
+    const body = normalizedSource.slice(bodyStart, bodyEnd === -1 ? undefined : bodyEnd);
+    const renderFunction = body.match(/^\s*\{\s*\(\s*\{([^}]*)\}\s*\)\s*=>/);
+    const disabledBinding = renderFunction?.[1].match(
+      /(?:^|,)\s*disabled\s*(?::\s*([A-Za-z_$][\w$]*))?\s*(?=,|$)/
+    );
+
+    if (!renderFunction || !disabledBinding) {
+      results.push({ file, line, message: READONLY_RENDER_MESSAGE });
+      continue;
+    }
+
+    const localBinding = disabledBinding[1] ?? 'disabled';
+    if (!usesBindingAsLock(body.slice(renderFunction[0].length), localBinding)) {
+      results.push({ file, line, message: READONLY_CONSUME_MESSAGE });
+    }
+  }
+
+  return results;
+}
+
+function readonlyFixtureMessages(children: string): string[] {
+  const source = `<LockedSection access={access} feature="webhooks" mode="readonly">${children}</LockedSection>`;
+  return readonlyLockedSectionViolations('fixture.tsx', source).map(({ message }) => message);
+}
+
+for (const [children, expected] of [
+  ['<MutableEditor />', [READONLY_RENDER_MESSAGE]],
+  ['{({ disabled }) => <MutableEditor />}', [READONLY_CONSUME_MESSAGE]],
+  ['{({ disabled }) => <MutableEditor disabled={disabled} />}', []],
+  ['{({ access, disabled }) => <MutableEditor disabled={disabled} />}', []],
+  ['{({ disabled: locked }) => <MutableEditor readOnly={locked} />}', []],
+  ['{({ disabled }) => <MutableEditor disabled />}', [READONLY_CONSUME_MESSAGE]],
+  ['{({ disabled }) => <MutableEditor aria-label="disabled" />}', [READONLY_CONSUME_MESSAGE]],
+  ['{({ disabled }) => <MutableEditor aria-disabled={disabled} />}', [READONLY_CONSUME_MESSAGE]],
+  ['{({ disabled }) => <MutableEditor data-locked={disabled} />}', [READONLY_CONSUME_MESSAGE]],
+  ['{({ disabled }) => <>{disabled && <LockNotice />}</>}', [READONLY_CONSUME_MESSAGE]],
+  ['{({ disabled }) => <MutableEditor disabled={!disabled} />}', [READONLY_CONSUME_MESSAGE]],
+  [
+    '{({ disabled }) => <MutableEditor disabled={disabled && false} />}',
+    [READONLY_CONSUME_MESSAGE],
+  ],
+  [
+    '{({ disabled }) => <MutableEditor disabled={disabled ? false : true} />}',
+    [READONLY_CONSUME_MESSAGE],
+  ],
+  ['{({ disabled }) => <MutableEditor disabled={(disabled)} />}', []],
+  ['{({ disabled }) => <MutableEditor disabled={disabled || (other && true)} />}', []],
+  [
+    '{({ disabled }) => <MutableEditor disabled={false && (other || disabled || third)} />}',
+    [READONLY_CONSUME_MESSAGE],
+  ],
+  [
+    '{({ disabled }) => <MutableEditor disabled={!(other || disabled || third)} />}',
+    [READONLY_CONSUME_MESSAGE],
+  ],
+  [
+    '{({ disabled }) => <MutableEditor disabled={(disabled || other) && false} />}',
+    [READONLY_CONSUME_MESSAGE],
+  ],
+  [
+    '{({ disabled }) => <MutableEditor disabled={disabled || other ? false : true} />}',
+    [READONLY_CONSUME_MESSAGE],
+  ],
+  ['{({ disabled }) => renderLocalesList(disabled, true)}', []],
+  ['{({ disabled }) => renderNotification(disabled)}', []],
+] as const) {
+  assert.deepEqual(readonlyFixtureMessages(children), expected);
+}
+
+assert.deepEqual(
+  readonlyLockedSectionViolations(
+    'fixture.tsx',
+    '<LockedSection access={condition > 0 ? a : b} feature="webhooks" mode={READONLY_MODE}><MutableEditor /></LockedSection>'
+  ).map(({ message }) => message),
+  [LOCKED_SECTION_MODE_MESSAGE]
+);
+
+assert.deepEqual(
+  readonlyLockedSectionViolations(
+    'fixture.tsx',
+    '<LockedSection {...sectionProps}><MutableEditor /></LockedSection>'
+  ).map(({ message }) => message),
+  [LOCKED_SECTION_SPREAD_MESSAGE]
+);
+
 for (const absolutePath of presentationFiles(ADMIN_SOURCE)) {
   const file = path.relative(REPO_ROOT, absolutePath).split(path.sep).join('/');
   const source = withoutComments(readFileSync(absolutePath, 'utf8'));
 
   violations.push(
+    ...readonlyLockedSectionViolations(file, source),
     ...findMatches(
       file,
       source,
@@ -355,6 +557,38 @@ requirePattern(
   lockedSectionSource,
   /role="group"[\s\S]*aria-label=\{lockedReason\}/,
   'readonly sections must expose their access-specific lock reason to assistive technology'
+);
+requirePattern(
+  lockedSectionFile,
+  lockedSectionSource,
+  /typeof\s+children\s*===\s*['"]function['"][\s\S]*?children\(\{\s*access,\s*disabled:\s*presentation\.disabled\s*\}\)/,
+  'LockedSection must forward presentation.disabled to its render child'
+);
+
+const gatedButtonFile = PRIMITIVES[1];
+const gatedButtonSource = sourceFor(gatedButtonFile);
+const gatedButtonLockedBranch = gatedButtonSource.slice(
+  gatedButtonSource.indexOf('const requiredTier')
+);
+requirePattern(
+  gatedButtonFile,
+  gatedButtonLockedBranch,
+  /<Tooltip\s+label=\{tooltipLabel\}>[\s\S]*?<span[\s\S]*?role="group"[\s\S]*?tabIndex=\{0\}[\s\S]*?aria-disabled="true"[\s\S]*?aria-label=\{tooltipLabel\}/,
+  'locked GatedButton must expose a focusable explanatory wrapper'
+);
+requirePattern(
+  gatedButtonFile,
+  gatedButtonLockedBranch,
+  /<Button\s+\{\.\.\.rest\}\s+disabled\s*>/,
+  'locked GatedButton must render a truly disabled Button'
+);
+violations.push(
+  ...findMatches(
+    gatedButtonFile,
+    gatedButtonLockedBranch,
+    /\bonClick\s*=/g,
+    'locked GatedButton must not forward onClick'
+  )
 );
 
 assert.equal(
