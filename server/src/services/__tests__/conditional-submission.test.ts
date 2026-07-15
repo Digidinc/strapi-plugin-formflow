@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { partitionFieldsByVisibility, type ConditionalRule } from '../../utils/validation-rules';
 import submissionService, { type SubmissionMetadata, type SubmittableForm } from '../submission';
 import validationService from '../validation';
 
@@ -88,6 +89,65 @@ const form: SubmittableForm = {
       name: 'with_document_attachment',
       label: 'With-document attachment',
       conditional: { field: 'supporting_document', operator: 'is_not_empty' },
+    },
+    {
+      id: 'chain-root-id',
+      type: 'text',
+      name: 'chain_root',
+      label: 'Chain root',
+    },
+    {
+      id: 'chain-gate-id',
+      type: 'text',
+      name: 'chain_gate',
+      label: 'Chain gate',
+      conditional: { field: 'chain_root', operator: 'equals', value: 'show' },
+    },
+    {
+      id: 'chain-text-id',
+      type: 'email',
+      name: 'chain_text',
+      label: 'Chain text',
+      conditional: { field: 'chain_gate', operator: 'equals', value: 'unlock' },
+    },
+    {
+      id: 'chain-consent-id',
+      type: 'consent',
+      name: 'chain_consent',
+      label: 'Chain consent',
+      required: true,
+      conditional: { field: 'chain_gate', operator: 'equals', value: 'unlock' },
+    },
+    {
+      id: 'chain-file-id',
+      type: 'file',
+      name: 'chain_file',
+      label: 'Chain file',
+      validation: [
+        { type: 'maxSize', value: 1, message: 'Chained file is too large' },
+        { type: 'allowedTypes', value: 'image/png', message: 'Chained file must be a PNG' },
+      ],
+      conditional: { field: 'chain_gate', operator: 'equals', value: 'unlock' },
+    },
+    {
+      id: 'file-chain-root-id',
+      type: 'text',
+      name: 'file_chain_root',
+      label: 'File chain root',
+    },
+    {
+      id: 'file-chain-source-id',
+      type: 'file',
+      name: 'file_chain_source',
+      label: 'File chain source',
+      conditional: { field: 'file_chain_root', operator: 'equals', value: 'show' },
+    },
+    {
+      id: 'file-chain-note-id',
+      type: 'email',
+      name: 'file_chain_note',
+      label: 'File chain note',
+      conditional: { field: 'file_chain_source', operator: 'is_not_empty' },
     },
   ],
   settings: {},
@@ -189,6 +249,125 @@ const metadata: SubmissionMetadata = {
 };
 
 void (async () => {
+  const graphFields: Array<{ name: string; type?: string; conditional?: ConditionalRule }> = [
+    { name: 'always_first' },
+    {
+      name: 'missing_target',
+      conditional: { field: 'missing_source', operator: 'equals', value: 'yes' },
+    },
+    { name: 'duplicate_source' },
+    { name: 'duplicate_source' },
+    {
+      name: 'ambiguous_target',
+      conditional: { field: 'duplicate_source', operator: 'equals', value: 'yes' },
+    },
+    {
+      name: 'cycle_a',
+      conditional: { field: 'cycle_b', operator: 'equals', value: 'on' },
+    },
+    {
+      name: 'cycle_b',
+      conditional: { field: 'cycle_a', operator: 'equals', value: 'on' },
+    },
+    {
+      name: 'cycle_descendant',
+      conditional: { field: 'cycle_a', operator: 'equals', value: 'on' },
+    },
+    {
+      name: 'empty_source_target',
+      conditional: { field: '', operator: 'is_not_empty' },
+    },
+    { name: 'hidden_graph_root' },
+    {
+      name: 'hidden_graph_source',
+      conditional: { field: 'hidden_graph_root', operator: 'equals', value: 'show' },
+    },
+    {
+      name: 'hidden_empty_descendant',
+      conditional: { field: 'hidden_graph_source', operator: 'is_empty' },
+    },
+    {
+      name: 'hidden_not_equals_descendant',
+      conditional: { field: 'hidden_graph_source', operator: 'not_equals', value: 'unlock' },
+    },
+    { name: 'layout_source', type: 'heading' },
+    {
+      name: 'layout_target',
+      conditional: { field: 'layout_source', operator: 'equals', value: 'attacker-value' },
+    },
+    {
+      name: 'self_reference',
+      conditional: { field: 'self_reference', operator: 'equals', value: 'yes' },
+    },
+    {
+      name: 'unsupported_operator',
+      conditional: {
+        field: 'always_first',
+        operator: 'unsupported' as ConditionalRule['operator'],
+      },
+    },
+    { name: 'always_last' },
+  ];
+  const graphData = {
+    missing_source: 'yes',
+    duplicate_source: 'yes',
+    cycle_a: 'on',
+    cycle_b: 'on',
+    hidden_graph_root: 'hide',
+    layout_source: 'attacker-value',
+    self_reference: 'yes',
+  };
+  const graphPartition = partitionFieldsByVisibility(graphFields, graphData);
+
+  assert.deepEqual(
+    graphPartition.visible.map((field) => field.name),
+    [
+      'always_first',
+      'duplicate_source',
+      'duplicate_source',
+      'hidden_graph_root',
+      'layout_source',
+      'always_last',
+    ]
+  );
+  assert.deepEqual(
+    graphPartition.hidden.map((field) => field.name),
+    [
+      'missing_target',
+      'ambiguous_target',
+      'cycle_a',
+      'cycle_b',
+      'cycle_descendant',
+      'empty_source_target',
+      'hidden_graph_source',
+      'hidden_empty_descendant',
+      'hidden_not_equals_descendant',
+      'layout_target',
+      'self_reference',
+      'unsupported_operator',
+    ]
+  );
+
+  const childFirstPartition = partitionFieldsByVisibility(
+    [
+      {
+        name: 'empty_child',
+        conditional: { field: 'visible_intermediate', operator: 'is_empty' as const },
+      },
+      {
+        name: 'visible_intermediate',
+        conditional: { field: 'visible_root', operator: 'equals' as const, value: 'show' },
+      },
+      { name: 'visible_root' },
+    ],
+    { visible_root: 'show' }
+  );
+  assert.deepEqual(
+    childFirstPartition.visible.map((field) => field.name),
+    ['empty_child', 'visible_intermediate', 'visible_root']
+  );
+  assert.deepEqual(childFirstPartition.hidden, []);
+
   const hiddenInvalidFile = {
     originalFilename: 'hidden.exe',
     mimetype: 'application/x-msdownload',
@@ -370,6 +549,146 @@ void (async () => {
       .map((call: any) => call.files[0].originalFilename),
     ['source.png', 'with-document.png']
   );
+
+  const rowsBeforeHiddenFileSource = createdRows.length;
+  const uploadsBeforeHiddenFileSource = uploadCalls.length;
+  await service.submit(
+    form.slug,
+    { file_chain_root: 'hide', file_chain_note: 'not-an-email' },
+    metadata,
+    { file_chain_source: hiddenInvalidFile }
+  );
+
+  assert.equal(createdRows.length, rowsBeforeHiddenFileSource + 1);
+  const hiddenFileSourceData = createdRows[createdRows.length - 1].data.data as Record<
+    string,
+    unknown
+  >;
+  assert.equal(hiddenFileSourceData.file_chain_root, 'hide');
+  assert.equal(hiddenFileSourceData.file_chain_source, undefined);
+  assert.equal(hiddenFileSourceData.file_chain_note, undefined);
+  assert.equal(uploadCalls.length, uploadsBeforeHiddenFileSource);
+
+  const uploadsBeforeVisibleFileSource = uploadCalls.length;
+  await service.submit(
+    form.slug,
+    { file_chain_root: 'show', file_chain_note: 'visible@example.com' },
+    metadata,
+    { file_chain_source: visibleFile }
+  );
+
+  const visibleFileSourceData = createdRows[createdRows.length - 1].data.data as Record<
+    string,
+    unknown
+  >;
+  assert.equal(visibleFileSourceData.file_chain_root, 'show');
+  assert.equal(visibleFileSourceData.file_chain_note, 'visible@example.com');
+  assert.deepEqual(visibleFileSourceData.file_chain_source, {
+    id: 1,
+    documentId: 'uploaded-file-id',
+    url: '/uploads/conditional.png',
+    name: 'conditional.png',
+    mime: 'image/png',
+    size: 256,
+  });
+  assert.equal(uploadCalls.length, uploadsBeforeVisibleFileSource + 1);
+
+  // A descendant must not become visible from attacker-supplied data when its
+  // own source field is hidden higher in the conditional chain.
+  const rowsBeforeHiddenChain = createdRows.length;
+  const uploadsBeforeHiddenChain = uploadCalls.length;
+  const consentUpdatesBeforeHiddenChain = updatedRows.length;
+  await service.submit(
+    form.slug,
+    {
+      chain_root: 'hide',
+      chain_gate: 'unlock',
+      chain_text: 'not-an-email',
+      chain_consent: false,
+    },
+    metadata,
+    { chain_file: hiddenInvalidFile }
+  );
+
+  assert.equal(createdRows.length, rowsBeforeHiddenChain + 1);
+  const hiddenChainData = createdRows[createdRows.length - 1].data.data as Record<string, unknown>;
+  assert.equal(hiddenChainData.chain_root, 'hide');
+  assert.equal(hiddenChainData.chain_gate, undefined);
+  assert.equal(hiddenChainData.chain_text, undefined);
+  assert.equal(hiddenChainData.chain_consent, undefined);
+  assert.equal(hiddenChainData.chain_file, undefined);
+  assert.equal(uploadCalls.length, uploadsBeforeHiddenChain);
+  assert.equal(updatedRows.length, consentUpdatesBeforeHiddenChain);
+
+  // The same descendants remain available when every source in the chain is
+  // legitimately visible and its condition passes.
+  const uploadsBeforeVisibleChain = uploadCalls.length;
+  const consentUpdatesBeforeVisibleChain = updatedRows.length;
+  await service.submit(
+    form.slug,
+    {
+      chain_root: 'show',
+      chain_gate: 'unlock',
+      chain_text: 'visible@example.com',
+      chain_consent: true,
+    },
+    metadata,
+    { chain_file: visibleFile }
+  );
+
+  const visibleChainData = createdRows[createdRows.length - 1].data.data as Record<string, unknown>;
+  assert.equal(visibleChainData.chain_root, 'show');
+  assert.equal(visibleChainData.chain_gate, 'unlock');
+  assert.equal(visibleChainData.chain_text, 'visible@example.com');
+  assert.equal(visibleChainData.chain_consent, true);
+  assert.deepEqual(visibleChainData.chain_file, {
+    id: 1,
+    documentId: 'uploaded-file-id',
+    url: '/uploads/conditional.png',
+    name: 'conditional.png',
+    mime: 'image/png',
+    size: 256,
+  });
+  assert.equal(uploadCalls.length, uploadsBeforeVisibleChain + 1);
+  assert.equal(updatedRows.length, consentUpdatesBeforeVisibleChain + 1);
+  const visibleChainConsent = updatedRows[updatedRows.length - 1].data.metadata.consents.find(
+    (consent: { field: string }) => consent.field === 'chain_consent'
+  );
+  assert.deepEqual(
+    {
+      field: visibleChainConsent.field,
+      label: visibleChainConsent.label,
+      accepted: visibleChainConsent.accepted,
+    },
+    {
+      field: 'chain_consent',
+      label: 'Chain consent',
+      accepted: true,
+    }
+  );
+
+  const originalSettings = form.settings;
+  form.settings = {
+    layout: 'multi-step',
+    steps: [{ id: 'chain-step', fields: ['chain-text-id'] }],
+  };
+
+  const hiddenChainStep = await service.validateStep(
+    form.slug,
+    { chain_root: 'hide', chain_gate: 'unlock', chain_text: 'not-an-email' },
+    'chain-step'
+  );
+  assert.deepEqual(hiddenChainStep, { valid: true, errors: {}, step: 'chain-step' });
+
+  const visibleChainStep = await service.validateStep(
+    form.slug,
+    { chain_root: 'show', chain_gate: 'unlock', chain_text: 'not-an-email' },
+    'chain-step'
+  );
+  assert.equal(visibleChainStep.valid, false);
+  assert.deepEqual(visibleChainStep.errors.chain_text, ['Invalid email address']);
+
+  form.settings = originalSettings;
 
   await service.savePartial(
     form.slug,

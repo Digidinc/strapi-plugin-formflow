@@ -262,8 +262,8 @@ export const evaluateConditional = (
       return !isEmptyValue(target);
 
     default:
-      // Unknown operator: default to visible so we never silently hide a field.
-      return true;
+      // Invalid persisted/runtime configuration must not reveal a field.
+      return false;
   }
 };
 
@@ -289,8 +289,16 @@ export const isFieldVisible = (
   return evaluateConditional(conditional, data);
 };
 
+/**
+ * Partition fields in their original order while resolving conditional
+ * dependencies as a graph. A conditional field is visible only when its named
+ * source resolves to exactly one visible value-bearing field and its own rule
+ * passes. Missing, ambiguous, layout-only, and cyclic sources fail closed.
+ */
 export const partitionFieldsByVisibility = <
   T extends {
+    name: string;
+    type?: string;
     conditional?: ConditionalRule;
   },
 >(
@@ -299,9 +307,46 @@ export const partitionFieldsByVisibility = <
 ): { visible: T[]; hidden: T[] } => {
   const visible: T[] = [];
   const hidden: T[] = [];
+  const fieldIndexesByName = new Map<string, number[]>();
+  const visibility = new Array<'visiting' | 'visible' | 'hidden' | undefined>(fields.length);
 
-  for (const field of fields) {
-    (isFieldVisible(field.conditional, data) ? visible : hidden).push(field);
+  for (const [index, field] of fields.entries()) {
+    const matchingIndexes = fieldIndexesByName.get(field.name) || [];
+    matchingIndexes.push(index);
+    fieldIndexesByName.set(field.name, matchingIndexes);
+  }
+
+  const resolveVisibility = (index: number): boolean => {
+    const resolved = visibility[index];
+    if (resolved === 'visible') return true;
+    if (resolved === 'hidden') return false;
+    if (resolved === 'visiting') {
+      visibility[index] = 'hidden';
+      return false;
+    }
+
+    const field = fields[index];
+    const conditional = field.conditional;
+
+    if (!conditional) {
+      visibility[index] = 'visible';
+      return true;
+    }
+
+    visibility[index] = 'visiting';
+    const sourceIndexes = conditional.field ? fieldIndexesByName.get(conditional.field) : undefined;
+    const sourceIndex = sourceIndexes?.length === 1 ? sourceIndexes[0] : undefined;
+    const isVisible =
+      sourceIndex !== undefined &&
+      !isLayoutField(fields[sourceIndex].type || '') &&
+      resolveVisibility(sourceIndex) &&
+      evaluateConditional(conditional, data);
+    visibility[index] = isVisible ? 'visible' : 'hidden';
+    return isVisible;
+  };
+
+  for (const [index, field] of fields.entries()) {
+    (resolveVisibility(index) ? visible : hidden).push(field);
   }
 
   return { visible, hidden };
