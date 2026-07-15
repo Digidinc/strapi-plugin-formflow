@@ -150,6 +150,46 @@ const form: SubmittableForm = {
       label: 'File chain note',
       conditional: { field: 'file_chain_source', operator: 'is_not_empty' },
     },
+    {
+      id: 'checkbox-source-id',
+      type: 'checkbox',
+      name: 'topics',
+      label: 'Topics',
+      options: [
+        { label: 'Product', value: 'product' },
+        { label: 'Product updates', value: 'product-updates' },
+      ],
+    },
+    {
+      id: 'checkbox-dependent-id',
+      type: 'text',
+      name: 'product_details',
+      label: 'Product details',
+      required: true,
+      conditional: { field: 'topics', operator: 'contains', value: 'product' },
+    },
+    {
+      id: 'required-checkbox-gate-id',
+      type: 'text',
+      name: 'required_checkbox_gate',
+      label: 'Required checkbox gate',
+    },
+    {
+      id: 'required-checkbox-id',
+      type: 'checkbox',
+      name: 'required_topics',
+      label: 'Required topics',
+      required: true,
+      conditional: { field: 'required_checkbox_gate', operator: 'equals', value: 'show' },
+    },
+    {
+      id: 'empty-checkbox-dependent-id',
+      type: 'text',
+      name: 'empty_topics_explanation',
+      label: 'Empty topics explanation',
+      required: true,
+      conditional: { field: 'required_topics', operator: 'is_empty' },
+    },
   ],
   settings: {},
 };
@@ -702,6 +742,37 @@ void (async () => {
   assert.deepEqual(visibleChainStep.errors.chain_text, ['Invalid email address']);
 
   form.settings = originalSettings;
+
+  // Formidable demotes a one-element multipart checkbox array to a scalar.
+  // Visibility must restore checkbox array semantics before evaluating
+  // `contains`, otherwise "product-updates" falsely substring-matches
+  // "product" and requires a dependent field the client kept hidden.
+  const rowsBeforeScalarCheckbox = createdRows.length;
+  await service.submit(form.slug, { topics: 'product-updates' }, metadata);
+
+  assert.equal(createdRows.length, rowsBeforeScalarCheckbox + 1);
+  const scalarCheckboxData = createdRows[createdRows.length - 1].data.data as Record<
+    string,
+    unknown
+  >;
+  assert.deepEqual(scalarCheckboxData.topics, ['product-updates']);
+  assert.equal(scalarCheckboxData.product_details, undefined);
+
+  // An empty multipart checkbox scalar represents no selections. It must stay
+  // empty for both required validation and descendants using `is_empty`.
+  const rowsBeforeEmptyScalarCheckbox = createdRows.length;
+  await assert.rejects(
+    service.submit(form.slug, { required_checkbox_gate: 'show', required_topics: '' }, metadata),
+    (error: any) => {
+      assert.equal(error.name, 'ValidationError');
+      assert.deepEqual(error.details.required_topics, ['Required topics is required']);
+      assert.deepEqual(error.details.empty_topics_explanation, [
+        'Empty topics explanation is required',
+      ]);
+      return true;
+    }
+  );
+  assert.equal(createdRows.length, rowsBeforeEmptyScalarCheckbox);
 
   await service.savePartial(
     form.slug,

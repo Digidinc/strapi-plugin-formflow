@@ -298,6 +298,14 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
         // never written back to submissionData, so only uploaded media refs are
         // persisted later.
         visibilityData[field.name] = files[field.name];
+      } else if (field.type === 'checkbox') {
+        // Formidable returns one repeated multipart field as a scalar and two or
+        // more as an array. Restore the checkbox's multi-value shape before
+        // evaluating visibility so `contains` always means exact membership.
+        const value = visibilityData[field.name];
+        if (value !== undefined && value !== null && !Array.isArray(value)) {
+          visibilityData[field.name] = isEmptyValue(value) ? [] : [value];
+        }
       }
     }
     const { visible: visibleFields, hidden: hiddenFields } = partitionFieldsByVisibility(
