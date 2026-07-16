@@ -12,10 +12,14 @@ export interface EncryptedSecret {
 function decodeKey(encoded: string | undefined): Buffer {
   if (!encoded) throw new Error('FORMFLOW_ENCRYPTION_KEY is required to store Telegram credentials.');
   const key = Buffer.from(encoded, 'base64');
-  if (key.length !== 32 || key.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) {
+  if (key.length !== 32 || key.toString('base64') !== encoded) {
     throw new Error('FORMFLOW_ENCRYPTION_KEY must be exactly 32 bytes encoded as base64.');
   }
   return key;
+}
+
+export function assertEncryptionKey(encodedKey: string | undefined): void {
+  decodeKey(encodedKey);
 }
 
 export function encryptSecret(value: string, encodedKey: string | undefined): EncryptedSecret {

@@ -40,6 +40,15 @@ test('encrypts with fresh AES-GCM nonces and rejects authenticated tampering', (
   assert.doesNotMatch(JSON.stringify(first), /super-secret-token/);
 });
 
+test('rejects noncanonical, unpadded, padded-alternate, and whitespace base64 keys', () => {
+  const canonical = Buffer.alloc(32, 7).toString('base64');
+  const base64url = Buffer.alloc(32, 255).toString('base64').replace(/\//g, '_');
+  const invalid = [canonical.replace(/=+$/, ''), `${canonical}\n`, ` ${canonical}`, `${canonical}=`, base64url];
+  for (const candidate of invalid) {
+    assert.throws(() => encryptSecret(token, candidate), /exactly 32 bytes encoded as base64/);
+  }
+});
+
 test('creates stable safe connections, enforces limits, and reports references', async () => {
   const { service, persisted } = fixture(1);
   const created = await service.createConnection({ name: 'Primary', credential: { type: 'stored', token } });
@@ -80,7 +89,45 @@ test('requires an encryption key for storage but permits environment references'
   const fx = fixture();
   const service = createTelegramConnectionService({ ...fx.service.dependencies, encryptionKey: undefined });
   await assert.rejects(service.createConnection({ name: 'Stored', credential: { type: 'stored', token } }), /FORMFLOW_ENCRYPTION_KEY/);
+  assert.equal(fx.calls.length, 0);
   await service.createConnection({ name: 'Environment', credential: { type: 'environment', variableName: 'TELEGRAM_BOT' } });
+});
+
+test('validates the encryption key before transmitting a replacement credential', async () => {
+  const fx = fixture();
+  const created = await fx.service.createConnection({ name: 'Stored', credential: { type: 'stored', token } });
+  const callsBefore = fx.calls.length;
+  fx.service.dependencies.encryptionKey = undefined;
+  await assert.rejects(
+    fx.service.updateConnection(created.id, { credential: { type: 'replace', token: '999:not-transmitted' } }),
+    /FORMFLOW_ENCRYPTION_KEY/
+  );
+  assert.equal(fx.calls.length, callsBefore);
+});
+
+test('fails closed on malformed plugin-store data without overwriting it', async () => {
+  let setCalls = 0;
+  const corrupt = { version: 1, connections: 'not-an-array' };
+  const service = createTelegramConnectionService({
+    ...fixture().service.dependencies,
+    store: { get: async () => corrupt, set: async () => { setCalls += 1; } },
+  });
+  await assert.rejects(service.listConnections(), /stored Telegram connection data is invalid/i);
+  await assert.rejects(
+    service.createConnection({ name: 'Must not overwrite', credential: { type: 'environment', variableName: 'TELEGRAM_BOT' } }),
+    /stored Telegram connection data is invalid/i
+  );
+  assert.equal(setCalls, 0);
+});
+
+test('fails closed on malformed records inside an otherwise versioned store document', async () => {
+  let setCalls = 0;
+  const service = createTelegramConnectionService({
+    ...fixture().service.dependencies,
+    store: { get: async () => ({ version: 1, connections: [{}] }), set: async () => { setCalls += 1; } },
+  });
+  await assert.rejects(service.listConnections(), /stored Telegram connection data is invalid/i);
+  assert.equal(setCalls, 0);
 });
 
 test('uses explicit keep, replace, and environment actions and preserves ciphertext on failed rotation', async () => {

@@ -13,6 +13,19 @@ interface EeTelegramService extends TelegramService {}
 
 const unavailable = () => new Error('Telegram connections are unavailable in this build.');
 
+export async function countTelegramConnectionReferences(strapi: Core.Strapi, id: string): Promise<number> {
+  const forms = await strapi.documents('plugin::formflow.form').findMany({
+    fields: ['settings'], status: 'draft', limit: -1,
+  } as any) as Array<{ settings?: unknown }>;
+  return forms.reduce((total, form) => {
+    const settings = form.settings;
+    if (typeof settings !== 'object' || settings === null) return total;
+    const telegram = (settings as { telegram?: unknown }).telegram;
+    return typeof telegram === 'object' && telegram !== null &&
+      (telegram as { connectionId?: unknown }).connectionId === id ? total + 1 : total;
+  }, 0);
+}
+
 /** MIT-safe boundary: the commercial implementation is only loaded on demand. */
 const telegramService = ({ strapi }: { strapi: Core.Strapi }): TelegramService => {
   let implementation: EeTelegramService | null = null;
@@ -29,6 +42,7 @@ const telegramService = ({ strapi }: { strapi: Core.Strapi }): TelegramService =
           encryptionKey: strapi.config.get('plugin::formflow.telegram.encryptionKey') as string | undefined,
           license: plugin.service('license'),
           fetch: globalThis.fetch as any,
+          referenceCount: (id: string) => countTelegramConnectionReferences(strapi, id),
         }) as EeTelegramService;
       } catch {
         implementation = null;

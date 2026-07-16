@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TelegramBotMetadata, TelegramConnectionId, TelegramCredentialInput } from './types';
-import { decryptSecret, encryptSecret, type EncryptedSecret } from './crypto';
+import { assertEncryptionKey, decryptSecret, encryptSecret, type EncryptedSecret } from './crypto';
 
 const STORE_KEY = 'telegram.connections';
 const ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]*$/;
@@ -17,6 +17,20 @@ interface StoredConnection {
   createdAt: string; updatedAt: string;
 }
 interface StoredDocument { version: 1; connections: StoredConnection[] }
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+const isStoredConnection = (value: unknown): value is StoredConnection => {
+  if (!isObject(value) || typeof value.id !== 'string' || typeof value.name !== 'string' ||
+    typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string' || !isObject(value.bot) ||
+    typeof value.bot.id !== 'string' || typeof value.bot.displayName !== 'string' || !isObject(value.tokenSource)) return false;
+  const source = value.tokenSource;
+  if (source.type === 'environment') return typeof source.variableName === 'string' && ENVIRONMENT_NAME.test(source.variableName);
+  if (source.type !== 'stored' || !isObject(source.secret)) return false;
+  const secret = source.secret;
+  return secret.version === 1 && typeof secret.nonce === 'string' && typeof secret.authTag === 'string' &&
+    typeof secret.ciphertext === 'string';
+};
 
 export interface ConnectionDependencies {
   store: { get(input: { key: string }): Promise<unknown>; set(input: { key: string; value: unknown }): Promise<unknown> };
@@ -44,9 +58,12 @@ export function createTelegramConnectionService(dependencies: ConnectionDependen
   const deps = dependencies;
   const load = async (): Promise<StoredDocument> => {
     const value = await deps.store.get({ key: STORE_KEY }) as Partial<StoredDocument> | null;
-    return value?.version === 1 && Array.isArray(value.connections)
-      ? { version: 1, connections: value.connections }
-      : { version: 1, connections: [] };
+    if (value === null || value === undefined) return { version: 1, connections: [] };
+    if (typeof value !== 'object' || value.version !== 1 || !Array.isArray(value.connections) ||
+      !value.connections.every(isStoredConnection)) {
+      throw new Error('Stored Telegram connection data is invalid. Restore or remove the corrupt plugin-store record before continuing.');
+    }
+    return { version: 1, connections: value.connections };
   };
   const save = (document: StoredDocument) => deps.store.set({ key: STORE_KEY, value: document });
   const limit = (): Limit => deps.license.limit('telegramConnections');
@@ -111,6 +128,7 @@ export function createTelegramConnectionService(dependencies: ConnectionDependen
       if (max !== 'unlimited' && document.connections.length >= Math.max(0, max)) {
         throw new Error('Telegram connection limit reached for the current license.');
       }
+      if (input.credential.type === 'stored') assertEncryptionKey(deps.encryptionKey);
       const bot = await validateCredential(input.credential);
       const source: StoredSource = input.credential.type === 'stored'
         ? { type: 'stored', secret: encryptSecret(input.credential.token, deps.encryptionKey) }
@@ -132,6 +150,7 @@ export function createTelegramConnectionService(dependencies: ConnectionDependen
       let source = previous.tokenSource;
       let bot = previous.bot;
       if (input.credential.type === 'replace') {
+        assertEncryptionKey(deps.encryptionKey);
         bot = await validateCredential({ type: 'stored', token: input.credential.token });
         source = { type: 'stored', secret: encryptSecret(input.credential.token, deps.encryptionKey) };
       } else if (input.credential.type === 'switch-to-environment') {
