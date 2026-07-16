@@ -20,6 +20,15 @@ export default {
       },
     },
     {
+      method: 'POST',
+      path: '/forms/:slug/analytics/start',
+      handler: 'public.trackFormStart',
+      config: {
+        auth: false,
+        policies: ['plugin::formflow.is-form-active'],
+      },
+    },
+    {
       // Accepts BOTH application/json and multipart/form-data. Multipart is
       // required for `file` fields: the global `strapi::body` middleware
       // (koa-body, multipart + patchKoa enabled by default) parses uploads into

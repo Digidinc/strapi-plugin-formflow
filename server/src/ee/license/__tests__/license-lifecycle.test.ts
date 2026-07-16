@@ -6,13 +6,19 @@ import { createHash } from 'node:crypto';
 import licenseController from '../../../controllers/license';
 import adminRoutes from '../../../routes/admin';
 import coreLicenseService from '../../../services/license';
-import { validate as validateMorLicense } from '../mor-client';
+import { activate as activateMorLicense, validate as validateMorLicense } from '../mor-client';
 import { createLicenseService, type LicenseDependencies, type LicenseService } from '../service';
 
 const NOW = new Date('2026-02-01T00:00:00.000Z');
 const VALID_PRO = {
   valid: true,
   tier: 'pro' as const,
+  validUntil: new Date('2026-12-31T00:00:00.000Z'),
+  status: 'active',
+};
+const VALID_BUSINESS = {
+  valid: true,
+  tier: 'business' as const,
   validUntil: new Date('2026-12-31T00:00:00.000Z'),
   status: 'active',
 };
@@ -290,6 +296,73 @@ void (async () => {
     dedupedValidation.resolve(VALID_PRO);
     await first;
 
+    let activationCalls = 0;
+    const activationRecovery = create(
+      'raw-activation-recovery-key',
+      dependencies({
+        activate: async () => {
+          activationCalls += 1;
+          return activationCalls === 1
+            ? null
+            : {
+                instanceId: 'recovered-instance',
+                tier: 'business',
+                validUntil: VALID_BUSINESS.validUntil,
+              };
+        },
+        validate: async () => VALID_BUSINESS,
+      })
+    );
+    await activationRecovery.init();
+    await activationRecovery.whenReady();
+    assert.equal(activationRecovery.snapshot().tier, 'business');
+    assert.equal(activationRecovery.snapshot().state, 'active');
+    assert.equal(activationRecovery.snapshot().resolution, 'resolved');
+    assert.equal(activationCalls, 1);
+    await activationRecovery.refresh();
+    assert.equal(activationCalls, 2, 'activation retries while no instance id is stored');
+    await activationRecovery.refresh();
+    assert.equal(activationCalls, 2, 'a stored instance id short-circuits later activation');
+
+    let inactiveActivationCalls = 0;
+    let inactiveValidationCalls = 0;
+    const inactiveRecovery = create(
+      'raw-inactive-recovery-key',
+      dependencies({
+        activate: async () => {
+          inactiveActivationCalls += 1;
+          return inactiveActivationCalls === 1
+            ? null
+            : {
+                instanceId: 'inactive-recovered-instance',
+                tier: 'business',
+                validUntil: VALID_BUSINESS.validUntil,
+              };
+        },
+        validate: async () => {
+          inactiveValidationCalls += 1;
+          return inactiveValidationCalls === 1
+            ? {
+                valid: false,
+                tier: 'free',
+                validUntil: null,
+                status: 'inactive',
+              }
+            : VALID_BUSINESS;
+        },
+      })
+    );
+    await inactiveRecovery.init();
+    await inactiveRecovery.whenReady();
+    assert.equal(inactiveRecovery.snapshot().tier, 'free');
+    assert.equal(inactiveRecovery.snapshot().state, 'expired');
+    await inactiveRecovery.init();
+    await inactiveRecovery.whenReady();
+    assert.equal(inactiveActivationCalls, 2);
+    assert.equal(inactiveRecovery.snapshot().tier, 'business');
+    assert.equal(inactiveRecovery.snapshot().state, 'active');
+    assert.equal(inactiveRecovery.snapshot().resolution, 'resolved');
+
     const wrapped = coreLicenseService({ strapi: inMemoryStrapi() });
     await wrapped.init();
     const wrappedFirst = wrapped.refresh();
@@ -364,6 +437,72 @@ void (async () => {
     } finally {
       globalThis.fetch = originalFetch;
       console.warn = originalWarn;
+    }
+
+    const originalMorSetTimeout = globalThis.setTimeout;
+    const originalMorError = console.error;
+    try {
+      console.error = () => {};
+      globalThis.setTimeout = ((
+        callback: (...args: unknown[]) => void,
+        delay?: number,
+        ...args: unknown[]
+      ) =>
+        originalMorSetTimeout(
+          callback,
+          delay === 5000 ? 5 : 50,
+          ...args
+        )) as typeof globalThis.setTimeout;
+
+      const delayedFetch =
+        (json: Record<string, unknown>) =>
+        async (_input: string | URL | Request, init?: RequestInit): Promise<Response> =>
+          new Promise<Response>((resolve, reject) => {
+            const responseTimer = originalMorSetTimeout(
+              () => resolve({ ok: true, status: 200, json: async () => json } as Response),
+              10
+            );
+            init?.signal?.addEventListener(
+              'abort',
+              () => {
+                clearTimeout(responseTimer);
+                reject(new DOMException('The operation was aborted', 'AbortError'));
+              },
+              { once: true }
+            );
+          });
+
+      globalThis.fetch = delayedFetch({
+        activated: true,
+        instance: { id: 'slow-activation-instance' },
+        meta: { variant_name: 'Business annual' },
+        license_key: { expires_at: '2026-12-31T00:00:00.000Z' },
+      });
+      const slowActivation = await activateMorLicense({
+        licenseKey: 'slow-activation-key',
+        instanceName: 'slow-activation-instance-name',
+      });
+      assert.equal(
+        slowActivation?.instanceId,
+        'slow-activation-instance',
+        'activation must allow a response beyond the normal validation timeout'
+      );
+
+      globalThis.fetch = delayedFetch({
+        valid: true,
+        meta: { variant_name: 'Business annual' },
+        license_key: { status: 'active', expires_at: '2026-12-31T00:00:00.000Z' },
+      });
+      const slowValidation = await validateMorLicense({ licenseKey: 'slow-validation-key' });
+      assert.equal(
+        slowValidation.status,
+        'error',
+        'validation must retain the normal five-second timeout'
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      globalThis.setTimeout = originalMorSetTimeout;
+      console.error = originalMorError;
     }
 
     const originalSetTimeout = globalThis.setTimeout;

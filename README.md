@@ -118,6 +118,8 @@ npm run build
 npm run develop
 ```
 
+> **Testing a locally linked build:** after `yalc push`, stop the consuming Strapi app, remove its generated `.strapi/`, `node_modules/.strapi/`, `.cache/`, `.vite/`, `build/`, and `dist/` directories, then rebuild and restart. Otherwise Strapi or Vite may continue serving a stale admin bundle.
+
 ---
 
 ## Quick start
@@ -177,6 +179,54 @@ All public endpoints are mounted under `/api/formflow` and are unauthenticated b
 | `POST` | `/api/formflow/forms/:slug/submit`               | Submit values for the form                                     |
 | `POST` | `/api/formflow/forms/:slug/partial`              | Save a partial submission and receive a resume token           |
 | `GET`  | `/api/formflow/forms/:slug/partial/:resumeToken` | Resume a saved partial submission by token                     |
+| `POST` | `/api/formflow/forms/:slug/analytics/start`      | Record a form-start analytics event (the headless SDKs call this) |
+
+---
+
+## Configuration
+
+FormFlow works out of the box with no configuration. Optional plugin options can be set in `config/plugins.js` (or `.ts`) under the `formflow` key:
+
+```js
+// config/plugins.js
+module.exports = () => ({
+  formflow: {
+    enabled: true,
+    config: {
+      // Mask submitter IP addresses before storage (IPv4 last octet zeroed,
+      // IPv6 truncated to the /64 prefix), in both the stored `ipAddress`
+      // column and `metadata.ipAddress`. Requires a Business license to take
+      // effect. Default: false (raw IP stored).
+      anonymizeIp: false,
+
+      // When > 0, a daily cron deletes submissions older than this many days.
+      // Requires a Business license to take effect. Default: 0 (disabled;
+      // submissions are kept indefinitely and no cron is registered).
+      dataRetentionDays: 0,
+
+      // Optional instance-wide reCAPTCHA defaults. Per-form spam settings take
+      // precedence; secrets here are server-only and never returned publicly.
+      recaptcha: {
+        enabled: false,
+        siteKey: '',
+        secretKey: '',
+        version: 'v3', // 'v2' | 'v3'
+        threshold: 0.5, // v3 score threshold
+      },
+    },
+  },
+});
+```
+
+| Option              | Type      | Default | Description                                                                     |
+| ------------------- | --------- | ------- | ------------------------------------------------------------------------------- |
+| `anonymizeIp`       | `boolean` | `false` | Mask submitter IPs before storage. Requires a **Business** license.             |
+| `dataRetentionDays` | `number`  | `0`     | Daily-purge submissions older than N days; `0` disables. Requires **Business**. |
+| `recaptcha`         | `object`  | —       | Instance-wide reCAPTCHA defaults (per-form settings take precedence).           |
+
+The license key is provided via the **`FORMFLOW_LICENSE_KEY`** environment variable (server-only; never returned in public responses). Without it, FormFlow runs as the fully-functional free tier.
+
+Both privacy options are OFF by default, so existing installs are unaffected until an administrator opts in **and** holds the required license entitlement.
 
 ---
 

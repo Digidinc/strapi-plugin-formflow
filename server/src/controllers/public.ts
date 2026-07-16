@@ -65,9 +65,7 @@ interface PaymentRequiredError {
  */
 const isPaymentRequiredError = (error: unknown): error is PaymentRequiredError => {
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as { status?: unknown }).status === 402
+    typeof error === 'object' && error !== null && (error as { status?: unknown }).status === 402
   );
 };
 
@@ -119,6 +117,32 @@ const publicController = ({ strapi }: { strapi: Core.Strapi }) => ({
       strapi.log.error('Error fetching form schema:', error);
       ctx.throw(500, 'Internal server error');
     }
+  },
+
+  /**
+   * Record that a visitor started interacting with a rendered form.
+   * POST /api/formflow/forms/:slug/analytics/start
+   *
+   * Capture is intentionally public and license-independent, matching schema
+   * views and successful-submission completions. The SDK calls this endpoint at
+   * most once per store session and treats analytics as best-effort.
+   */
+  async trackFormStart(ctx: PublicContext) {
+    const { slug } = ctx.params;
+
+    if (!slug || typeof slug !== 'string') {
+      ctx.status = 400;
+      return;
+    }
+
+    const form = await strapi.plugin('formflow').service('form').findBySlug(slug);
+
+    if (!form || !form.isActive) {
+      return ctx.notFound('Form not found or not available');
+    }
+
+    strapi.plugin('formflow').service('analytics').recordEvent(form.documentId, 'start');
+    ctx.status = 204;
   },
 
   /**
