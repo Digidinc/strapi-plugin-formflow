@@ -12,7 +12,7 @@ import { SETTINGS_PERMISSIONS } from '../../permissions';
 import { getTranslation } from '../../utils/getTranslation';
 import {
   API, buildTelegramCreateRequest, buildTelegramUpdateRequest, connectionAvailability,
-  resetTelegramCredentialDraft, telegramConnectionMutationPolicy, telegramDraftCanSave,
+  resetTelegramCredentialDraft, telegramConnectionMutationPolicy, telegramDraftCanSubmit,
   rawRequest,
   type TelegramBotMetadataResponse, type TelegramConnectionResponse,
   type TelegramCreateCredentialRequest, type TelegramCredentialDraft,
@@ -139,7 +139,7 @@ const ConnectionDialog = ({ editor, onClose, onSaved }: { editor: Editor | null;
   const fingerprint = `${name.trim()}|${draft.mode}|${draft.token.trim()}|${draft.variableName.trim()}`;
   const existingBot = editor?.kind === 'edit' ? editor.connection.bot : null;
   const reviewedBot = draft.mode === 'keep' ? existingBot : validatedBot;
-  const isValidated = telegramDraftCanSave(draft.mode, validatedFingerprint, fingerprint, validatedBot, existingBot);
+  const canSubmit = telegramDraftCanSubmit(name, draft.mode, validatedFingerprint, fingerprint, validatedBot, existingBot);
 
   const invalidate = () => { setValidatedBot(null); setValidatedFingerprint(null); };
 
@@ -155,7 +155,7 @@ const ConnectionDialog = ({ editor, onClose, onSaved }: { editor: Editor | null;
   };
 
   const save = async () => {
-    if (!editor || !valid || !isValidated) return;
+    if (!editor || !valid || !canSubmit) return;
     setSaving(true);
     try {
       if (editor.kind === 'create') await post(API.telegramConnections, buildTelegramCreateRequest(name, draft as Extract<typeof draft, { mode: 'stored' | 'environment' }>));
@@ -180,5 +180,5 @@ const ConnectionDialog = ({ editor, onClose, onSaved }: { editor: Editor | null;
     {draft.mode === 'stored' || draft.mode === 'replace' ? <Field.Root required><Field.Label>{formatMessage({ id: getTranslation('settings.telegram.field.token'), defaultMessage: 'Bot token' })}</Field.Label><TextInput type="password" autoComplete="new-password" value={draft.token} onChange={(event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, token: event.target.value }); invalidate(); }} /><Field.Hint>{formatMessage({ id: getTranslation('settings.telegram.field.token.hint'), defaultMessage: 'The existing token is never displayed. Validate the new token before saving.' })}</Field.Hint></Field.Root> : null}
     {draft.mode === 'environment' ? <Field.Root required><Field.Label>{formatMessage({ id: getTranslation('settings.telegram.field.environment'), defaultMessage: 'Environment variable' })}</Field.Label><TextInput value={draft.variableName} placeholder={formatMessage({ id: getTranslation('settings.telegram.field.environment.placeholder'), defaultMessage: 'TELEGRAM_BOT_TOKEN' })} onChange={(event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, variableName: event.target.value.toUpperCase() }); invalidate(); }} /></Field.Root> : null}
     {reviewedBot ? <Alert variant="success" title={formatMessage({ id: getTranslation('settings.telegram.validated'), defaultMessage: 'Bot validated' })}>{reviewedBot.displayName}{reviewedBot.username ? ` (@${reviewedBot.username})` : ''}</Alert> : null}
-  </Flex></Dialog.Body><Dialog.Footer><Dialog.Cancel><Button variant="tertiary">{formatMessage({ id: getTranslation('common.cancel'), defaultMessage: 'Cancel' })}</Button></Dialog.Cancel>{draft.mode !== 'keep' ? <Button variant="secondary" loading={saving} disabled={!valid} onClick={validate}>{formatMessage({ id: getTranslation('settings.telegram.validate'), defaultMessage: 'Validate' })}</Button> : null}<Button loading={saving} disabled={!isValidated} onClick={save}>{formatMessage({ id: getTranslation('common.save'), defaultMessage: 'Save' })}</Button></Dialog.Footer></Dialog.Content></Dialog.Root>;
+  </Flex></Dialog.Body><Dialog.Footer><Dialog.Cancel><Button variant="tertiary">{formatMessage({ id: getTranslation('common.cancel'), defaultMessage: 'Cancel' })}</Button></Dialog.Cancel>{draft.mode !== 'keep' ? <Button variant="secondary" loading={saving} disabled={!valid} onClick={validate}>{formatMessage({ id: getTranslation('settings.telegram.validate'), defaultMessage: 'Validate' })}</Button> : null}<Button loading={saving} disabled={!canSubmit} onClick={save}>{formatMessage({ id: getTranslation('common.save'), defaultMessage: 'Save' })}</Button></Dialog.Footer></Dialog.Content></Dialog.Root>;
 };

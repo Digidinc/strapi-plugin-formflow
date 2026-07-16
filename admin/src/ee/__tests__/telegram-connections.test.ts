@@ -13,6 +13,7 @@ import {
   telegramConnectionMutationPolicy,
   telegramValidationMatches,
   telegramDraftCanSave,
+  telegramDraftCanSubmit,
 } from '../../utils/api';
 
 test('builds keep, replace, and switch update payloads without ambiguity', () => {
@@ -25,6 +26,14 @@ test('builds keep, replace, and switch update payloads without ambiguity', () =>
   assert.deepEqual(buildTelegramUpdateRequest('Primary', { mode: 'environment', variableName: 'TELEGRAM_TOKEN' }), {
     name: 'Primary', credential: { type: 'switch-to-environment', variableName: 'TELEGRAM_TOKEN' },
   });
+});
+
+test('requires a non-empty name and the mode-specific validation state before Save', () => {
+  const bot = { id: '1', displayName: 'Alerts' };
+  assert.equal(telegramDraftCanSubmit('', 'keep', null, '|keep||', null, bot), false);
+  assert.equal(telegramDraftCanSubmit('Renamed', 'keep', null, 'Renamed|keep||', null, bot), true);
+  assert.equal(telegramDraftCanSubmit('Renamed', 'replace', null, 'Renamed|replace|new|', null, bot), false);
+  assert.equal(telegramDraftCanSubmit('Renamed', 'environment', 'Renamed|environment||BOT_TOKEN', 'Renamed|environment||BOT_TOKEN', bot, null), true);
 });
 
 test('enables save only for reviewed metadata matching the unchanged draft', () => {

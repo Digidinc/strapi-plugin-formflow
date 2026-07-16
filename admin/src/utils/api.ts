@@ -152,6 +152,17 @@ export const telegramDraftCanSave = (
   ? existingBot !== null
   : telegramValidationMatches(validatedFingerprint, currentFingerprint, validatedBot);
 
+export const telegramDraftCanSubmit = (
+  name: string,
+  mode: TelegramCredentialDraft['mode'],
+  validatedFingerprint: string | null,
+  currentFingerprint: string,
+  validatedBot: TelegramBotMetadataResponse | null,
+  existingBot: TelegramBotMetadataResponse | null
+): boolean => name.trim().length > 0 && telegramDraftCanSave(
+  mode, validatedFingerprint, currentFingerprint, validatedBot, existingBot
+);
+
 /**
  * Resolve the admin JWT the same way `@strapi/admin`'s fetch client does:
  * primarily from localStorage (`jwtToken`), falling back to a cookie.
