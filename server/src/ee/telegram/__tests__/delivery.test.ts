@@ -77,7 +77,33 @@ test('classifies timeout and network failures and does not retry', async () => {
   assert.doesNotMatch(JSON.stringify([...timed.logs, ...network.logs]), /SECRET_TOKEN/);
 });
 
-test('classifies an unavailable sendRichMessage client as configuration', async () => {
-  const { service } = make(async () => response(200, '{}'), null);
-  assert.deepEqual(await service.sendRichNotification({ connectionId: 'c', destination: 'd', html: 'h' }), { ok: false, failure: 'configuration' });
+test('classifies a production Bot API unsupported-method response as configuration', async () => {
+  const { service } = make(async () => response(404, JSON.stringify({
+    ok: false, error_code: 404, description: 'Not Found: method sendRichMessage not found',
+  })));
+  assert.deepEqual(await service.sendRichNotification({ connectionId: 'c', destination: 'd', html: 'h' }), { ok: false, failure: 'configuration', errorCode: 404 });
+});
+
+test('classifies credential resolution failures as configuration without leaking details', async () => {
+  const logs: unknown[][] = [];
+  const service = createTelegramDeliveryService({
+    resolveCredential: async () => { throw new Error('BOT_TOKEN missing SECRET_TOKEN'); },
+    fetch: async () => response(200, '{}'),
+    logger: { error: (...args: unknown[]) => logs.push(args) },
+  });
+  assert.deepEqual(await service.sendRichNotification({ connectionId: 'missing', destination: 'd', html: 'h' }), { ok: false, failure: 'configuration' });
+  assert.doesNotMatch(JSON.stringify(logs), /BOT_TOKEN|SECRET_TOKEN|missing/);
+});
+
+test('bounds credential resolution within the operation timeout', async () => {
+  const service = createTelegramDeliveryService({
+    resolveCredential: async () => new Promise<string>(() => {}),
+    fetch: async () => response(200, '{}'),
+    logger: { error() {} }, timeoutMs: 5,
+  });
+  const result = await Promise.race([
+    service.sendRichNotification({ connectionId: 'c', destination: 'd', html: 'h' }),
+    new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 50)),
+  ]);
+  assert.deepEqual(result, { ok: false, failure: 'timeout' });
 });

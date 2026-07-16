@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import submissionService, { type SubmittableForm } from '../../../services/submission';
+import { createTelegramService } from '../index';
 
 const form: SubmittableForm = {
   documentId: 'form-1', slug: 'contact', title: 'Contact', isActive: true,
@@ -26,7 +27,7 @@ const setup = (dispatch: () => void) => {
       if (name === 'upload') return { upload: async () => [] };
       if (service === 'form') return { findBySlug: async () => form, incrementSubmissionCount: async () => {} };
       if (service === 'validation') return { validate: () => ({ errors: {} }), validateFiles: () => ({ errors: {} }), sanitize: (_f: unknown, d: unknown) => d };
-      if (service === 'license') return { can: (feature: string) => ['saveResume', 'webhooks', 'email.advanced'].includes(feature) };
+      if (service === 'license') return { can: (feature: string) => ['saveResume', 'webhooks', 'email.advanced', 'integrations'].includes(feature) };
       if (service === 'analytics') return { recordEvent() {} };
       if (service === 'telegram') return { dispatchForSubmission: dispatch };
       if (service === 'email') return { sendSubmissionNotification: async () => { emails += 1; } };
@@ -40,11 +41,19 @@ const setup = (dispatch: () => void) => {
 
 test('dispatches Telegram exactly once after final persistence and preserves public success', async () => {
   let dispatches = 0;
+  let integrationRequests = 0;
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = (async () => { integrationRequests += 1; return { ok: true } as Response; }) as typeof fetch;
+  (form.settings as any).integrations = [{ type: 'zapier', enabled: true, webhookUrl: 'https://example.com/zapier' }];
   const { service, counts } = setup(() => { dispatches += 1; throw new Error('telegram failed'); });
   const result = await service.submit('contact', {}, { ipAddress: '127.0.0.1', submittedAt: 'now' });
+  await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(result.submission.documentId, 'submission-1');
   assert.equal(counts().creates, 1);
   assert.equal(dispatches, 1);
+  assert.equal(integrationRequests, 1);
+  delete (form.settings as any).integrations;
+  globalThis.fetch = previousFetch;
 });
 
 test('does not dispatch Telegram from draft saves or status updates', async () => {
@@ -71,3 +80,35 @@ test('disabled Telegram settings do not prevent independent existing hooks', asy
   assert.equal(counts().webhooks, 1);
   form.settings = original;
 });
+
+test('enforces current integration entitlement and active connection quantity before dispatch', async () => {
+  let entitled = false;
+  let requests = 0;
+  const stored = { version: 1, connections: ['active', 'inactive'].map((id) => ({
+    id, name: id, tokenSource: { type: 'environment', variableName: `${id.toUpperCase()}_TOKEN` },
+    bot: { id, displayName: id }, createdAt: 'now', updatedAt: 'now',
+  })) };
+  const service = createTelegramService({
+    store: { get: async () => stored, set: async () => undefined },
+    environment: { ACTIVE_TOKEN: 'one', INACTIVE_TOKEN: 'two' },
+    license: { limit: () => 1, can: () => entitled },
+    fetch: async () => { requests += 1; return { ok: true, status: 200, json: async () => ({ ok: true }), body: responseBody('{"ok":true}') } as any; },
+    logger: { error() {} },
+  });
+  const dispatch = (connectionId: string) => service.dispatchForSubmission({
+    fields: [], settings: { telegram: { ...form.settings!.telegram!, connectionId: connectionId as any, enabled: true } as any },
+  }, { data: {} });
+  dispatch('active');
+  entitled = true;
+  dispatch('inactive');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(requests, 0);
+  dispatch('active');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(requests, 1);
+});
+
+const responseBody = (body: string) => ({ getReader() { let done = false; return {
+  async read() { if (done) return { done: true }; done = true; return { done: false, value: new TextEncoder().encode(body) }; },
+  async cancel() {},
+}; } });

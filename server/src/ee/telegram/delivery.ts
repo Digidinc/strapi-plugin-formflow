@@ -29,6 +29,9 @@ export interface TelegramDeliveryDependencies {
   timeoutMs?: number;
 }
 
+class ConfigurationFailure extends Error {}
+class TimeoutFailure extends Error {}
+
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -65,6 +68,8 @@ const classify = (status: number, body: unknown): Extract<TelegramDeliveryResult
   if (status === 401 || errorCode === 401) failure = 'authentication';
   else if (status === 429 || errorCode === 429) failure = 'rate_limit';
   else if (status >= 500) failure = 'telegram_server';
+  else if ((status === 400 || status === 404) && description.includes('sendrichmessage') &&
+    (description.includes('not found') || description.includes('unsupported'))) failure = 'configuration';
   else if (description.includes('chat not found')) failure = 'destination';
   else if (status === 403 || description.includes('forbidden') || description.includes('cannot post')) failure = 'permission';
   const parameters = object(body) && object(body.parameters) ? body.parameters : undefined;
@@ -76,20 +81,32 @@ const classify = (status: number, body: unknown): Extract<TelegramDeliveryResult
 export function createTelegramDeliveryService(dependencies: TelegramDeliveryDependencies) {
   return {
     async sendRichNotification(input: TelegramDeliveryInput): Promise<TelegramDeliveryResult> {
-      if (dependencies.sendRichMessage === null) return { ok: false, failure: 'configuration' };
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), dependencies.timeoutMs ?? 10_000);
+      let rejectTimeout!: (error: Error) => void;
+      const timeout = new Promise<never>((_resolve, reject) => { rejectTimeout = reject; });
+      const timer = setTimeout(() => {
+        controller.abort();
+        rejectTimeout(new TimeoutFailure());
+      }, dependencies.timeoutMs ?? 10_000);
       try {
-        const token = await dependencies.resolveCredential(input.connectionId);
-        const response = dependencies.sendRichMessage
-          ? await dependencies.sendRichMessage(token, input, controller.signal)
-          : await dependencies.fetch(`https://api.telegram.org/bot${token}/sendRichMessage`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ chat_id: input.destination, message: { html: input.html } }),
-            signal: controller.signal,
-          });
-        const body = await readBounded(response);
+        const operation = (async () => {
+          let token: string;
+          try {
+            token = await dependencies.resolveCredential(input.connectionId);
+          } catch {
+            throw new ConfigurationFailure();
+          }
+          const response = dependencies.sendRichMessage
+            ? await dependencies.sendRichMessage(token, input, controller.signal)
+            : await dependencies.fetch(`https://api.telegram.org/bot${token}/sendRichMessage`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ chat_id: input.destination, message: { html: input.html } }),
+              signal: controller.signal,
+            });
+          return { response, body: await readBounded(response) };
+        })();
+        const { response, body } = await Promise.race([operation, timeout]);
         if (response.ok && object(body) && body.ok === true) {
           const result = object(body.result) ? body.result : undefined;
           return { ok: true, ...(result && typeof result.message_id === 'number' ? { messageId: result.message_id } : {}) };
@@ -102,8 +119,12 @@ export function createTelegramDeliveryService(dependencies: TelegramDeliveryDepe
         });
         return classified;
       } catch (error) {
-        const timeout = controller.signal.aborted || (error instanceof Error && error.name === 'AbortError');
-        const result: TelegramDeliveryResult = { ok: false, failure: timeout ? 'timeout' : 'network' };
+        const timedOut = error instanceof TimeoutFailure || controller.signal.aborted ||
+          (error instanceof Error && error.name === 'AbortError');
+        const configured = error instanceof ConfigurationFailure;
+        const result: TelegramDeliveryResult = {
+          ok: false, failure: timedOut ? 'timeout' : configured ? 'configuration' : 'network',
+        };
         dependencies.logger.error('Telegram delivery failed', { failure: result.failure });
         return result;
       } finally {

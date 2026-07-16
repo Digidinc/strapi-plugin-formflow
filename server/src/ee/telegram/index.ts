@@ -28,12 +28,17 @@ export const createTelegramService = (
         dependencies.logger?.error('Telegram delivery failed', { failure: 'template' });
         return;
       }
-      const input: TelegramDeliveryInput = {
-        connectionId: settings.connectionId,
-        destination: settings.destination,
-        html: rendered.html,
-      };
-      void delivery.sendRichNotification(input).catch(() => {
+      void (async () => {
+        if (dependencies.license.can?.('integrations') !== true) return;
+        const selected = (await connection.listConnections()).find((item) => item.id === settings.connectionId);
+        if (!selected?.active) return;
+        const input: TelegramDeliveryInput = {
+          connectionId: settings.connectionId,
+          destination: settings.destination,
+          html: rendered.html,
+        };
+        await delivery.sendRichNotification(input);
+      })().catch(() => {
         dependencies.logger?.error('Telegram delivery failed', { failure: 'unknown' });
       });
     },

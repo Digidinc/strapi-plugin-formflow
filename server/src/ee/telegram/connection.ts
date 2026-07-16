@@ -34,7 +34,7 @@ export interface ConnectionDependencies {
   store: { get(input: { key: string }): Promise<unknown>; set(input: { key: string; value: unknown }): Promise<unknown> };
   environment: Record<string, string | undefined>;
   encryptionKey?: string;
-  license: { limit(key: 'telegramConnections'): Limit };
+  license: { limit(key: 'telegramConnections'): Limit; can?(key: 'integrations'): boolean };
   fetch: Fetch;
   now?: () => Date;
   randomUUID?: () => string;
