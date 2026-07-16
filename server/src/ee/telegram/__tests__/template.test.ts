@@ -39,6 +39,26 @@ test('compiles every approved block and inline mark to Telegram HTML', () => {
   assert.match(result.html, /<blockquote>Quoted<\/blockquote>$/);
 });
 
+test('compiles code blocks, ordered and unordered lists, and dividers', () => {
+  const result = renderTelegramTemplate(document([
+    { type: 'codeBlock', code: '<deploy>&\nnext', language: 'sh' },
+    { type: 'list', style: 'unordered', children: [
+      { type: 'listItem', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'First' }] }] },
+      { type: 'listItem', children: [{ type: 'paragraph', children: [{ type: 'formField', fieldId: 'email', fallback: '-' }] }] },
+    ] },
+    { type: 'divider' },
+    { type: 'list', style: 'ordered', children: [
+      { type: 'listItem', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'One' }] }] },
+      { type: 'listItem', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'Two' }] }] },
+    ] },
+  ]), fields, { email: '<person@example.com>' });
+  assert.equal(result.errors.length, 0);
+  assert.match(result.html, /<pre><code class="language-sh">&lt;deploy&gt;&amp;\nnext<\/code><\/pre>/);
+  assert.match(result.html, /• First\n• &lt;person@example\.com&gt;/);
+  assert.match(result.html, /────────/);
+  assert.match(result.html, /1\. One\n2\. Two/);
+});
+
 test('escapes hostile submitted values and uses fallback for empty values', () => {
   const template = document([{ type: 'paragraph', children: [
     { type: 'formField', fieldId: 'email', fallback: '-' }, { type: 'text', text: ' / ' },

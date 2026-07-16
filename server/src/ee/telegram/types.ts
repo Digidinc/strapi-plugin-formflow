@@ -62,10 +62,34 @@ export interface TelegramBlockquoteNode {
   children: TelegramParagraphNode[];
 }
 
+export interface TelegramCodeBlockNode {
+  type: 'codeBlock';
+  code: string;
+  language?: string;
+}
+
+export interface TelegramListItemNode {
+  type: 'listItem';
+  children: TelegramParagraphNode[];
+}
+
+export interface TelegramListNode {
+  type: 'list';
+  style: 'ordered' | 'unordered';
+  children: TelegramListItemNode[];
+}
+
+export interface TelegramDividerNode {
+  type: 'divider';
+}
+
 export type TelegramTemplateNode =
   | TelegramParagraphNode
   | TelegramHeadingNode
-  | TelegramBlockquoteNode;
+  | TelegramBlockquoteNode
+  | TelegramCodeBlockNode
+  | TelegramListNode
+  | TelegramDividerNode;
 
 export interface TelegramTemplateDocument {
   version: 1;

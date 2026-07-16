@@ -41,6 +41,7 @@ const MAX_NODES = 200;
 const MAX_DEPTH = 6;
 const MAX_RENDERED_LENGTH = 10_000;
 const MAX_COLLECTION_ITEMS = 5;
+const MAX_LIST_ITEMS = 50;
 const MAX_OBJECT_KEYS = 8;
 const MAX_FORMAT_DEPTH = 2;
 const MAX_FORMATTED_VALUE_LENGTH = 20_000;
@@ -157,6 +158,40 @@ export function validateTemplate(
         });
         break;
       }
+      case 'codeBlock': {
+        allowedProperties(value, ['type', 'code', 'language'], path, errors);
+        if (typeof value.code !== 'string') error('invalid_code', `${path}.code`, 'Code block content must be a string.');
+        if (value.language !== undefined &&
+          (typeof value.language !== 'string' || !/^[a-z0-9_+-]{1,32}$/i.test(value.language))) {
+          error('invalid_language', `${path}.language`, 'Code block language must be a short safe identifier.');
+        }
+        break;
+      }
+      case 'list': {
+        allowedProperties(value, ['type', 'style', 'children'], path, errors);
+        if (value.style !== 'ordered' && value.style !== 'unordered') {
+          error('invalid_list_style', `${path}.style`, 'List style must be ordered or unordered.');
+        }
+        if (!Array.isArray(value.children)) error('invalid_children', `${path}.children`, 'List children must be list items.');
+        else {
+          if (value.children.length > MAX_LIST_ITEMS) error('list_limit', `${path}.children`, `List exceeds ${MAX_LIST_ITEMS} items.`);
+          value.children.forEach((item, itemIndex) => {
+            const itemPath = `${path}.children[${itemIndex}]`;
+            if (!isRecord(item) || item.type !== 'listItem') return error('invalid_child', itemPath, 'Lists may contain list items only.');
+            if (++nodeCount > MAX_NODES) return;
+            allowedProperties(item, ['type', 'children'], itemPath, errors);
+            if (!Array.isArray(item.children)) error('invalid_children', `${itemPath}.children`, 'List item children must be paragraphs.');
+            else item.children.forEach((child, childIndex) => {
+              if (!isRecord(child) || child.type !== 'paragraph') error('invalid_child', `${itemPath}.children[${childIndex}]`, 'List items may contain paragraphs only.');
+              else visitBlock(child, `${itemPath}.children[${childIndex}]`, depth + 2);
+            });
+          });
+        }
+        break;
+      }
+      case 'divider':
+        allowedProperties(value, ['type'], path, errors);
+        break;
       default: error('unsupported_node', `${path}.type`, `Unsupported block node type "${String(value.type)}".`);
     }
   };
@@ -230,6 +265,15 @@ export function renderTelegramTemplate(
       case 'paragraph': return node.children.map(renderInline).join('');
       case 'heading': return `<b>${node.children.map(renderInline).join('')}</b>`;
       case 'blockquote': return `<blockquote>${node.children.map(renderBlock).join('\n')}</blockquote>`;
+      case 'codeBlock': {
+        const language = node.language ? ` class="language-${escapeHtml(node.language)}"` : '';
+        return `<pre><code${language}>${escapeHtml(node.code)}</code></pre>`;
+      }
+      case 'list': return node.children.map((item, index) => {
+        const marker = node.style === 'ordered' ? `${index + 1}.` : '•';
+        return `${marker} ${item.children.map(renderBlock).join('\n')}`;
+      }).join('\n');
+      case 'divider': return '────────';
     }
   };
   const html = template.document.children.map(renderBlock).join('\n');
