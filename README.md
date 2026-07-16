@@ -8,7 +8,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@formflowjs/strapi-plugin-formflow.svg)](https://www.npmjs.com/package/@formflowjs/strapi-plugin-formflow)
 [![npm downloads](https://img.shields.io/npm/dm/@formflowjs/strapi-plugin-formflow.svg)](https://www.npmjs.com/package/@formflowjs/strapi-plugin-formflow)
-[![License: Open Core](https://img.shields.io/badge/license-Open%20Core%20(MIT%20%2B%20EE)-4945FF.svg)](./LICENSE)
+[![License: Open Core](<https://img.shields.io/badge/license-Open%20Core%20(MIT%20%2B%20EE)-4945FF.svg>)](./LICENSE)
 [![Strapi v5](https://img.shields.io/badge/Strapi-v5-4945FF.svg)](https://strapi.io)
 
 FormFlow lets you build configurable forms visually in the Strapi admin panel and consume them over a clean REST API from **any** frontend. Forms, fields, validation, spam protection, notifications, and submissions all live in Strapi — your frontend just fetches the schema and posts the values. Truly headless: bring your own framework, your own styling, your own UX.
@@ -32,7 +32,7 @@ A drag-and-drop form builder with a rich field registry:
 ### Validation & logic
 
 - Per-field validation rules with custom error messages
-- Conditional visibility (show/hide fields based on another field's value)
+- Conditional visibility based on another field's value (**Pro**; also included in **Business**)
 - Multi-step / wizard forms with per-step grouping and validation
 
 ### Submissions
@@ -170,13 +170,13 @@ Repository and docs: **https://github.com/hrahimi270/formflow-sdk**
 
 All public endpoints are mounted under `/api/formflow` and are unauthenticated by default (configurable via Strapi route policies).
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/api/formflow` | Plugin index / health check |
-| `GET`  | `/api/formflow/forms/:slug` | Get a form's sanitized public schema (optionally per `locale`) |
-| `POST` | `/api/formflow/forms/:slug/submit` | Submit values for the form |
-| `POST` | `/api/formflow/forms/:slug/partial` | Save a partial submission and receive a resume token |
-| `GET`  | `/api/formflow/forms/:slug/partial/:resumeToken` | Resume a saved partial submission by token |
+| Method | Path                                             | Description                                                    |
+| ------ | ------------------------------------------------ | -------------------------------------------------------------- |
+| `GET`  | `/api/formflow`                                  | Plugin index / health check                                    |
+| `GET`  | `/api/formflow/forms/:slug`                      | Get a form's sanitized public schema (optionally per `locale`) |
+| `POST` | `/api/formflow/forms/:slug/submit`               | Submit values for the form                                     |
+| `POST` | `/api/formflow/forms/:slug/partial`              | Save a partial submission and receive a resume token           |
+| `GET`  | `/api/formflow/forms/:slug/partial/:resumeToken` | Resume a saved partial submission by token                     |
 
 ---
 

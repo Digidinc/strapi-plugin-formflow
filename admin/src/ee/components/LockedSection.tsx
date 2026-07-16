@@ -1,51 +1,104 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 import * as React from 'react';
 import { Box } from '@strapi/design-system';
+import { useIntl } from 'react-intl';
 
-import { type FeatureKey } from '../feature-map';
+import { FEATURE_TIER, type FeatureKey } from '../feature-map';
+import { accessPresentation, type FeatureAccess } from '../license-state';
+import { LicenseStatusNotice } from './LicenseStatusNotice';
 import { UpsellCard } from './UpsellCard';
 
-export interface LockedSectionProps {
-  /** Whether the current license allows the feature. Pass `useLicense().can(feature)` result. */
-  can: boolean;
+export type LockedSectionChild = (state: {
+  access: FeatureAccess;
+  disabled: boolean;
+}) => React.ReactNode;
+
+interface LockedSectionBaseProps {
+  /** Explicit state-aware access for the gated feature. */
+  access: FeatureAccess;
   /** readonly: children rendered but all interactive controls disabled.
    *  replace: children replaced entirely with <UpsellCard>. */
-  mode?: 'readonly' | 'replace';
   /** Forwarded to UpsellCard when mode="replace". */
   feature: FeatureKey;
   /** Optional description forwarded to UpsellCard. */
   description?: string;
-  children: React.ReactNode;
 }
 
+export type LockedSectionProps = LockedSectionBaseProps &
+  (
+    | { mode: 'readonly'; children: LockedSectionChild }
+    | { mode?: 'replace'; children: React.ReactNode }
+  );
+
 /**
- * Gates a section of the admin UI based on the caller-supplied `can` flag.
+ * Gates a section of the admin UI from explicit feature access.
  *
  * - entitled: renders children untouched.
- * - locked + replace (default): swaps in an <UpsellCard>.
- * - locked + readonly: renders children but blocks interaction (pointer-events
- *   off, dimmed) so existing form-state values are preserved.
- *
- * A missing/undefined `can` degrades to the locked state, never an error.
+ * - checking/unavailable + replace: renders state-specific status UI.
+ * - unentitled + replace (default): swaps in an <UpsellCard>.
+ * - locked + readonly: renders dimmed children whose controls receive real
+ *   disabled/readOnly state through the render-function contract.
  */
 export const LockedSection = ({
-  can,
+  access,
   mode = 'replace',
   feature,
   description,
   children,
 }: LockedSectionProps) => {
-  if (can) {
-    return <>{children}</>;
+  const { formatMessage } = useIntl();
+  const presentation = accessPresentation(access);
+  const renderedChildren =
+    typeof children === 'function'
+      ? children({ access, disabled: presentation.disabled })
+      : children;
+  const requiredTier = FEATURE_TIER[feature] === 'business' ? 'Business' : 'Pro';
+  const lockedReason =
+    access === 'checking'
+      ? formatMessage({
+          id: 'formflow.license.checking',
+          defaultMessage: 'Checking FormFlow license…',
+        })
+      : access === 'unavailable'
+        ? formatMessage({
+            id: 'formflow.license.unavailable',
+            defaultMessage:
+              'FormFlow could not verify the current license. Premium controls are temporarily unavailable. Free features remain available.',
+          })
+        : formatMessage(
+            {
+              id: 'formflow.license.upgradeRequired',
+              defaultMessage: 'This feature requires a {tier} plan.',
+            },
+            { tier: requiredTier }
+          );
+
+  if (access === 'entitled') {
+    return <>{renderedChildren}</>;
   }
 
   if (mode === 'readonly') {
     return (
-      <Box style={{ pointerEvents: 'none', opacity: 0.6 }} aria-disabled>
-        {children}
+      <Box style={{ opacity: 0.6 }} role="group" aria-label={lockedReason} aria-disabled>
+        {renderedChildren}
       </Box>
     );
   }
 
-  return <UpsellCard feature={feature} description={description} />;
+  if (access === 'checking') {
+    return (
+      <Box padding={4} role="status">
+        {formatMessage({
+          id: 'formflow.license.checking',
+          defaultMessage: 'Checking FormFlow license…',
+        })}
+      </Box>
+    );
+  }
+
+  if (access === 'unavailable') {
+    return <LicenseStatusNotice compact />;
+  }
+
+  return <UpsellCard access={access} feature={feature} description={description} />;
 };

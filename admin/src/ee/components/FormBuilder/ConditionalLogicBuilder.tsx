@@ -2,35 +2,36 @@
 import * as React from 'react';
 import {
   Box,
-  Flex,
-  Typography,
-  Field,
-  TextInput,
+  Button,
   Checkbox,
+  Field,
+  Flex,
   Grid,
+  LinkButton,
   SingleSelect,
   SingleSelectOption,
+  TextInput,
+  Typography,
 } from '@strapi/design-system';
 import { useIntl } from 'react-intl';
 
 import { getTranslation } from '../../../utils/getTranslation';
-import { LockedSection } from '../LockedSection';
 import type { ConditionalRule, FormField } from '../../../utils/api';
+import { type FeatureAccess } from '../../license-state';
+import { LicenseStatusNotice } from '../LicenseStatusNotice';
+import { ProBadge } from '../ProBadge';
+import { PURCHASE_URL } from '../UpsellCard';
+import { ConditionalRuleSummary } from './ConditionalRuleSummary';
+import { resolveConditionalLogicBody } from './conditional-logic-view';
 
 export interface ConditionalLogicBuilderProps {
-  /** The current single conditional rule (or undefined/null if no rule). */
   conditional: ConditionalRule | undefined;
-  /** All fields in the form available as condition sources (layout fields excluded by caller). */
   conditionSourceFields: FormField[];
-  /** Called when the rule changes. Pass undefined to remove the rule. */
+  targetField: FormField;
   onChange: (conditional: ConditionalRule | undefined) => void;
-  /** When false: renders read-only (existing rule visible, no editing). */
-  canEdit: boolean;
+  access: FeatureAccess;
 }
 
-/**
- * Conditional operators that do not require a value input.
- */
 const VALUELESS_OPERATORS: ConditionalRule['operator'][] = ['is_empty', 'is_not_empty'];
 
 const CONDITIONAL_OPERATORS: ConditionalRule['operator'][] = [
@@ -41,28 +42,51 @@ const CONDITIONAL_OPERATORS: ConditionalRule['operator'][] = [
   'is_not_empty',
 ];
 
-/**
- * Visual AND/OR-style conditional-logic builder. For Phase 1 it edits the single
- * flat {@link ConditionalRule} shape (one field/operator/value) inside a distinct
- * group container that scaffolds future multi-rule support — no new data is added
- * to the rule shape and the server engine is unchanged.
- *
- * When `canEdit` is false the existing rule stays visible but read-only (via
- * <LockedSection mode="readonly">), and the enable/disable checkbox is disabled so
- * an unlicensed user cannot remove an existing rule.
- */
 export const ConditionalLogicBuilder = ({
   conditional,
   conditionSourceFields,
+  targetField,
   onChange,
-  canEdit,
+  access,
 }: ConditionalLogicBuilderProps) => {
   const { formatMessage } = useIntl();
+  const bodyState = resolveConditionalLogicBody({ access, conditional, conditionSourceFields });
+  const sourceField = conditional
+    ? conditionSourceFields.find((field) => field.name === conditional.field)
+    : undefined;
+  const dangling = Boolean(conditional && !sourceField);
+  const needsValue = Boolean(conditional && !VALUELESS_OPERATORS.includes(conditional.operator));
 
-  const operatorLabel = (op: ConditionalRule['operator']) =>
+  const conditionalTitle = formatMessage({
+    id: getTranslation('fieldEditor.conditional.title'),
+    defaultMessage: 'Conditional Logic',
+  });
+  const enableCopy = formatMessage({
+    id: getTranslation('fieldEditor.conditional.enable'),
+    defaultMessage: 'Show this field conditionally',
+  });
+  const noFieldsCopy = formatMessage({
+    id: getTranslation('fieldEditor.conditional.noFields'),
+    defaultMessage: 'Add another input field before configuring a condition.',
+  });
+  const requiresProCopy = formatMessage({
+    id: getTranslation('fieldEditor.conditional.requiresPro'),
+    defaultMessage: 'Conditional Logic requires a Pro plan.',
+  });
+  const readOnlyCopy = formatMessage({
+    id: getTranslation('fieldEditor.conditional.readOnly'),
+    defaultMessage:
+      'This existing rule remains active but is read-only without Conditional Logic entitlement.',
+  });
+  const danglingCopy = formatMessage({
+    id: getTranslation('fieldEditor.conditional.dangling'),
+    defaultMessage: 'This rule references a field that no longer exists.',
+  });
+
+  const operatorLabel = (operator: ConditionalRule['operator']) =>
     formatMessage({
-      id: getTranslation(`fieldEditor.conditional.operator.${op}`),
-      defaultMessage: op,
+      id: getTranslation(`fieldEditor.conditional.operator.${operator}`),
+      defaultMessage: operator,
     });
 
   const handleToggle = (enabled: boolean) => {
@@ -70,9 +94,12 @@ export const ConditionalLogicBuilder = ({
       onChange(undefined);
       return;
     }
+
     const firstField = conditionSourceFields[0];
+    if (!firstField) return;
+
     onChange({
-      field: firstField ? firstField.name : '',
+      field: firstField.name,
       operator: 'equals',
       value: '',
     });
@@ -83,130 +110,263 @@ export const ConditionalLogicBuilder = ({
     onChange({ ...conditional, ...updates });
   };
 
-  const needsValue = conditional && !VALUELESS_OPERATORS.includes(conditional.operator);
+  const disabledToggle = (
+    <Checkbox checked={false} disabled>
+      {enableCopy}
+    </Checkbox>
+  );
+
+  const viewPlansLink = (
+    <LinkButton
+      size="S"
+      variant="secondary"
+      href={PURCHASE_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {formatMessage({
+        id: getTranslation('license.viewPlans'),
+        defaultMessage: 'View plans',
+      })}
+    </LinkButton>
+  );
+
+  const editor = (
+    <Flex direction="column" gap={3} alignItems="stretch">
+      <Checkbox
+        checked={Boolean(conditional)}
+        onCheckedChange={(checked: boolean) => handleToggle(checked)}
+      >
+        {enableCopy}
+      </Checkbox>
+
+      {conditional ? (
+        <Box
+          padding={3}
+          background="neutral100"
+          hasRadius
+          borderColor="neutral200"
+          borderStyle="solid"
+          borderWidth="1px"
+        >
+          <Grid.Root gap={3} gridCols={12}>
+            <Grid.Item col={4} xs={12} direction="column" alignItems="stretch">
+              <Field.Root name="conditional-field">
+                <Field.Label>
+                  {formatMessage({
+                    id: getTranslation('fieldEditor.conditional.field'),
+                    defaultMessage: 'When field',
+                  })}
+                </Field.Label>
+                <SingleSelect
+                  value={sourceField ? conditional.field : undefined}
+                  onChange={(value: string | number) => handleUpdate({ field: String(value) })}
+                >
+                  {conditionSourceFields.map((field) => (
+                    <SingleSelectOption key={field.id} value={field.name}>
+                      {field.label || field.name}
+                    </SingleSelectOption>
+                  ))}
+                </SingleSelect>
+              </Field.Root>
+            </Grid.Item>
+
+            <Grid.Item col={4} xs={12} direction="column" alignItems="stretch">
+              <Field.Root name="conditional-operator">
+                <Field.Label>
+                  {formatMessage({
+                    id: getTranslation('fieldEditor.conditional.operator'),
+                    defaultMessage: 'Operator',
+                  })}
+                </Field.Label>
+                <SingleSelect
+                  value={conditional.operator}
+                  onChange={(value: string | number) => {
+                    const operator = value as ConditionalRule['operator'];
+                    handleUpdate({
+                      operator,
+                      ...(VALUELESS_OPERATORS.includes(operator) ? { value: undefined } : {}),
+                    });
+                  }}
+                >
+                  {CONDITIONAL_OPERATORS.map((operator) => (
+                    <SingleSelectOption key={operator} value={operator}>
+                      {operatorLabel(operator)}
+                    </SingleSelectOption>
+                  ))}
+                </SingleSelect>
+              </Field.Root>
+            </Grid.Item>
+
+            <Grid.Item col={4} xs={12} direction="column" alignItems="stretch">
+              <Field.Root name="conditional-value">
+                <Field.Label>
+                  {formatMessage({
+                    id: getTranslation('fieldEditor.conditional.value'),
+                    defaultMessage: 'Value',
+                  })}
+                </Field.Label>
+                <TextInput
+                  value={
+                    typeof conditional.value === 'string'
+                      ? conditional.value
+                      : String(conditional.value ?? '')
+                  }
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                    handleUpdate({ value: event.target.value })
+                  }
+                  disabled={!needsValue}
+                  placeholder={needsValue ? 'Value' : 'N/A'}
+                />
+              </Field.Root>
+            </Grid.Item>
+          </Grid.Root>
+        </Box>
+      ) : null}
+    </Flex>
+  );
+
+  const summary = conditional ? (
+    <ConditionalRuleSummary
+      targetField={targetField}
+      sourceField={sourceField}
+      rule={conditional}
+      dangling={dangling}
+    />
+  ) : null;
+
+  const removeRuleButton = (
+    <Button type="button" size="S" variant="danger-light" onClick={() => onChange(undefined)}>
+      {formatMessage({
+        id: getTranslation('fieldEditor.conditional.remove'),
+        defaultMessage: 'Remove conditional rule',
+      })}
+    </Button>
+  );
+
+  let body: React.ReactNode;
+  switch (bodyState) {
+    case 'checking':
+      body = (
+        <Box padding={3} background="neutral100" hasRadius role="status">
+          <Typography variant="pi" textColor="neutral600">
+            {formatMessage({
+              id: getTranslation('license.checking'),
+              defaultMessage: 'Checking FormFlow license…',
+            })}
+          </Typography>
+        </Box>
+      );
+      break;
+    case 'unavailable':
+      body = <LicenseStatusNotice compact />;
+      break;
+    case 'readonly-rule':
+      body = (
+        <Flex direction="column" gap={3} alignItems="flex-start">
+          {conditional ? (
+            <ConditionalRuleSummary
+              targetField={targetField}
+              sourceField={sourceField}
+              rule={conditional}
+              dangling={dangling}
+              lockCopy={readOnlyCopy}
+            />
+          ) : null}
+          {removeRuleButton}
+          {viewPlansLink}
+        </Flex>
+      );
+      break;
+    case 'dangling-readonly':
+      body = (
+        <Flex direction="column" gap={3} alignItems="flex-start">
+          {summary}
+          {removeRuleButton}
+        </Flex>
+      );
+      break;
+    case 'repair-rule':
+      body = (
+        <Flex direction="column" gap={3} alignItems="stretch">
+          <Box padding={3} background="warning100" hasRadius role="status">
+            <Typography variant="pi" textColor="warning700">
+              {danglingCopy}
+            </Typography>
+          </Box>
+          {editor}
+        </Flex>
+      );
+      break;
+    case 'prerequisite':
+      body = (
+        <Box padding={3} background="neutral100" hasRadius>
+          <Typography variant="pi" textColor="neutral600">
+            {noFieldsCopy}
+          </Typography>
+        </Box>
+      );
+      break;
+    case 'prerequisite-upsell':
+      body = (
+        <Box padding={3} background="neutral100" hasRadius>
+          <Flex direction="column" gap={3} alignItems="flex-start">
+            {disabledToggle}
+            <Typography variant="pi" textColor="neutral600">
+              {noFieldsCopy}
+            </Typography>
+            <Typography variant="pi">{requiresProCopy}</Typography>
+            {viewPlansLink}
+          </Flex>
+        </Box>
+      );
+      break;
+    case 'upsell':
+      body = (
+        <Box padding={3} background="neutral100" hasRadius>
+          <Flex direction="column" gap={3} alignItems="flex-start">
+            {disabledToggle}
+            <Typography variant="pi">{requiresProCopy}</Typography>
+            {viewPlansLink}
+          </Flex>
+        </Box>
+      );
+      break;
+    case 'editor':
+      body = editor;
+      break;
+  }
 
   return (
     <Box>
       <Box marginBottom={3}>
-        <Typography variant="sigma" textColor="neutral600" textTransform="uppercase">
-          {formatMessage({
-            id: getTranslation('fieldEditor.conditional.title'),
-            defaultMessage: 'Conditional Logic',
-          })}
-        </Typography>
-      </Box>
-
-      {conditionSourceFields.length === 0 ? (
-        <Box padding={3} background="neutral100" hasRadius>
+        <Flex gap={2} alignItems="center">
+          <Typography variant="sigma" textColor="neutral600" textTransform="uppercase">
+            {conditionalTitle}
+          </Typography>
+          {access !== 'entitled' ? <ProBadge feature="conditionalLogic" /> : null}
+        </Flex>
+        <Box marginTop={1}>
           <Typography variant="pi" textColor="neutral600">
             {formatMessage({
-              id: getTranslation('fieldEditor.conditional.noFields'),
-              defaultMessage: 'Add other input fields first to make this field conditional.',
+              id: getTranslation('fieldEditor.conditional.description'),
+              defaultMessage: 'Show this field based on another field’s submitted value.',
             })}
           </Typography>
         </Box>
-      ) : (
-        <LockedSection can={canEdit} mode="readonly" feature="conditionalLogic">
-          <Flex direction="column" gap={3} alignItems="stretch">
-            <Checkbox
-              checked={Boolean(conditional)}
-              onCheckedChange={(checked: boolean) => handleToggle(checked)}
-              disabled={!canEdit}
-            >
-              {formatMessage({
-                id: getTranslation('fieldEditor.conditional.enable'),
-                defaultMessage: 'Show this field conditionally',
-              })}
-            </Checkbox>
+      </Box>
 
-            {conditional && (
-              <Box
-                padding={3}
-                background="neutral100"
-                hasRadius
-                borderColor="neutral200"
-                borderStyle="solid"
-                borderWidth="1px"
-              >
-                <Grid.Root gap={3} gridCols={12}>
-                  <Grid.Item col={4} xs={12} direction="column" alignItems="stretch">
-                    <Field.Root name="conditional-field">
-                      <Field.Label>
-                        {formatMessage({
-                          id: getTranslation('fieldEditor.conditional.field'),
-                          defaultMessage: 'When field',
-                        })}
-                      </Field.Label>
-                      <SingleSelect
-                        value={conditional.field}
-                        onChange={(value: string | number) =>
-                          handleUpdate({ field: String(value) })
-                        }
-                      >
-                        {conditionSourceFields.map((f) => (
-                          <SingleSelectOption key={f.id} value={f.name}>
-                            {f.label || f.name}
-                          </SingleSelectOption>
-                        ))}
-                      </SingleSelect>
-                    </Field.Root>
-                  </Grid.Item>
+      {body}
 
-                  <Grid.Item col={4} xs={12} direction="column" alignItems="stretch">
-                    <Field.Root name="conditional-operator">
-                      <Field.Label>
-                        {formatMessage({
-                          id: getTranslation('fieldEditor.conditional.operator'),
-                          defaultMessage: 'Operator',
-                        })}
-                      </Field.Label>
-                      <SingleSelect
-                        value={conditional.operator}
-                        onChange={(value: string | number) => {
-                          const operator = value as ConditionalRule['operator'];
-                          // Valueless operators (is_empty/is_not_empty) don't use a
-                          // value, so clear any stale value in the same update.
-                          handleUpdate({
-                            operator,
-                            ...(VALUELESS_OPERATORS.includes(operator)
-                              ? { value: undefined }
-                              : {}),
-                          });
-                        }}
-                      >
-                        {CONDITIONAL_OPERATORS.map((op) => (
-                          <SingleSelectOption key={op} value={op}>
-                            {operatorLabel(op)}
-                          </SingleSelectOption>
-                        ))}
-                      </SingleSelect>
-                    </Field.Root>
-                  </Grid.Item>
-
-                  <Grid.Item col={4} xs={12} direction="column" alignItems="stretch">
-                    <Field.Root name="conditional-value">
-                      <Field.Label>
-                        {formatMessage({
-                          id: getTranslation('fieldEditor.conditional.value'),
-                          defaultMessage: 'Value',
-                        })}
-                      </Field.Label>
-                      <TextInput
-                        value={(conditional.value as string) || ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          handleUpdate({ value: e.target.value })
-                        }
-                        disabled={!needsValue}
-                        placeholder={needsValue ? 'Value' : 'N/A'}
-                      />
-                    </Field.Root>
-                  </Grid.Item>
-                </Grid.Root>
-              </Box>
-            )}
-          </Flex>
-        </LockedSection>
-      )}
+      <Box marginTop={3}>
+        <Typography variant="pi" textColor="neutral600">
+          {formatMessage({
+            id: getTranslation('fieldEditor.conditional.previewNotice'),
+            defaultMessage:
+              'The admin preview shows field appearance only. Conditional visibility runs in the frontend renderer and is enforced again during submission validation.',
+          })}
+        </Typography>
+      </Box>
     </Box>
   );
 };

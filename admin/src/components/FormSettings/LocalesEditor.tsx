@@ -21,7 +21,9 @@ import type {
   FieldLocaleOverride,
 } from '../../utils/api';
 import { useLicense } from '../../ee/hooks/useLicense';
+import { premiumMutationPolicy } from '../../ee/license-state';
 import { LockedSection } from '../../ee/components/LockedSection';
+import { LicenseStatusNotice } from '../../ee/components/LicenseStatusNotice';
 import { UpsellCard } from '../../ee/components/UpsellCard';
 
 export interface LocalesEditorProps {
@@ -55,14 +57,16 @@ const isLocalizableField = (field: FormField): boolean => field.type !== 'divide
  * and a form-level success message. The emitted shape matches exactly what the
  * server's `getPublicSchema` consumes when serving `?locale=<code>`.
  *
- * Gating: editing is gated on `can('multiLanguage')`. When unentitled the panel
- * shows the upsell; any pre-existing locale data is rendered read-only and is
- * never stripped (the server save-gate is the authoritative enforcement point).
+ * Gating: editing follows explicit `multiLanguage` access. Resolved unentitled
+ * access shows the upsell; checking/unavailable access shows neutral status.
+ * Existing locale data remains readable and is never stripped (the server
+ * save-gate is the authoritative enforcement point).
  */
 export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps) => {
   const { formatMessage } = useIntl();
-  const { can } = useLicense();
-  const entitled = can('multiLanguage');
+  const { access } = useLicense();
+  const multiLanguageAccess = access('multiLanguage');
+  const multiLanguagePolicy = premiumMutationPolicy(multiLanguageAccess);
 
   const [newLocaleCode, setNewLocaleCode] = useState('');
 
@@ -80,11 +84,12 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
 
   const removeLocale = useCallback(
     (code: string) => {
+      if (!multiLanguagePolicy.canRemove) return;
       const next = { ...locales };
       delete next[code];
       onChange(next);
     },
-    [locales, onChange]
+    [locales, multiLanguagePolicy.canRemove, onChange]
   );
 
   /** Merge a partial content patch into one locale and prune empty entries. */
@@ -134,7 +139,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
       const existing = fieldOverride.options;
       const nextOptions = baseOptions.map((opt, i) => ({
         value: opt.value,
-        label: i === optionIndex ? label : existing?.[i]?.label ?? opt.label,
+        label: i === optionIndex ? label : (existing?.[i]?.label ?? opt.label),
       }));
       fieldOverride.options = nextOptions;
       onChange({
@@ -156,8 +161,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
     field: FormField,
     optionIndex: number,
     defaultLabel: string
-  ): string =>
-    locales[code]?.fields?.[field.id]?.options?.[optionIndex]?.label ?? defaultLabel;
+  ): string => locales[code]?.fields?.[field.id]?.options?.[optionIndex]?.label ?? defaultLabel;
 
   const header = (
     <Box>
@@ -180,7 +184,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
   );
 
   /** The editable body — reused both entitled and (read-only) when locked. */
-  const renderLocale = (code: string) => (
+  const renderLocale = (code: string, disabled = false, canRemove = true) => (
     <Box
       key={code}
       padding={4}
@@ -200,6 +204,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
             defaultMessage: 'Remove locale',
           })}
           onClick={() => removeLocale(code)}
+          disabled={!canRemove}
           variant="ghost"
         >
           <Trash />
@@ -217,6 +222,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
           </Field.Label>
           <Textarea
             value={locales[code]?.successMessage ?? ''}
+            readOnly={disabled}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
               updateLocale(code, { successMessage: e.target.value || undefined })
             }
@@ -258,6 +264,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
                   <TextInput
                     value={localeOverrideValue(code, field.id, 'label')}
                     placeholder={field.label}
+                    readOnly={disabled}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       updateFieldOverride(code, field.id, 'label', e.target.value)
                     }
@@ -274,6 +281,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
                   <TextInput
                     value={localeOverrideValue(code, field.id, 'placeholder')}
                     placeholder={field.placeholder ?? ''}
+                    readOnly={disabled}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       updateFieldOverride(code, field.id, 'placeholder', e.target.value)
                     }
@@ -290,6 +298,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
                   <TextInput
                     value={localeOverrideValue(code, field.id, 'description')}
                     placeholder={field.description ?? ''}
+                    readOnly={disabled}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       updateFieldOverride(code, field.id, 'description', e.target.value)
                     }
@@ -314,6 +323,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
                           <TextInput
                             value={optionLabelValue(code, field, optionIndex, '')}
                             placeholder={option.label}
+                            readOnly={disabled}
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                               updateOptionLabel(code, field, optionIndex, e.target.value)
                             }
@@ -350,9 +360,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
           <TextInput
             value={newLocaleCode}
             placeholder="fr"
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setNewLocaleCode(e.target.value)
-            }
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLocaleCode(e.target.value)}
             onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -367,7 +375,10 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
         startIcon={<Plus />}
         variant="secondary"
         onClick={addLocale}
-        disabled={normalizeLocaleCode(newLocaleCode) === '' || Boolean(locales[normalizeLocaleCode(newLocaleCode)])}
+        disabled={
+          normalizeLocaleCode(newLocaleCode) === '' ||
+          Boolean(locales[normalizeLocaleCode(newLocaleCode)])
+        }
       >
         {formatMessage({
           id: getTranslation('translations.add.button'),
@@ -377,7 +388,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
     </Flex>
   );
 
-  const localesList =
+  const renderLocalesList = (disabled = false, canRemove = true) =>
     localeCodes.length === 0 ? (
       <Box padding={6} background="neutral100" hasRadius>
         <Flex justifyContent="center">
@@ -391,29 +402,37 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
       </Box>
     ) : (
       <Flex direction="column" gap={4} alignItems="stretch">
-        {localeCodes.map((code) => renderLocale(code))}
+        {localeCodes.map((code) => renderLocale(code, disabled, canRemove))}
       </Flex>
     );
 
-  // --- Unentitled: upsell + existing locales read-only (never stripped) ----
-  if (!entitled) {
+  // --- Locked: status/upsell + existing locales read-only (never stripped) --
+  if (multiLanguageAccess !== 'entitled') {
     const hasExisting = localeCodes.length > 0;
     return (
       <Flex direction="column" gap={4} alignItems="stretch">
         {header}
-        <UpsellCard
-          feature="multiLanguage"
-          description={formatMessage({
-            id: getTranslation('translations.upsell.description'),
-            defaultMessage:
-              'Author multi-language form content with a Business license. Translate labels, placeholders and messages per locale.',
-          })}
-        />
-        {hasExisting && (
-          <LockedSection can={false} feature="multiLanguage" mode="readonly">
-            {localesList}
-          </LockedSection>
+        {multiLanguageAccess === 'unentitled' ? (
+          <UpsellCard
+            access={multiLanguageAccess}
+            feature="multiLanguage"
+            description={formatMessage({
+              id: getTranslation('translations.upsell.description'),
+              defaultMessage:
+                'Author multi-language form content with a Business license. Translate labels, placeholders and messages per locale.',
+            })}
+          />
+        ) : (
+          <LicenseStatusNotice compact />
         )}
+        {hasExisting &&
+          (multiLanguageAccess === 'unentitled' ? (
+            renderLocalesList(true, multiLanguagePolicy.canRemove)
+          ) : (
+            <LockedSection access={multiLanguageAccess} feature="multiLanguage" mode="readonly">
+              {({ disabled }) => renderLocalesList(disabled, multiLanguagePolicy.canRemove)}
+            </LockedSection>
+          ))}
       </Flex>
     );
   }
@@ -423,7 +442,7 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
     <Flex direction="column" gap={4} alignItems="stretch">
       {header}
       {addLocaleRow}
-      {localesList}
+      {renderLocalesList()}
     </Flex>
   );
 };

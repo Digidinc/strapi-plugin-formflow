@@ -628,24 +628,13 @@ const submissionController = ({ strapi }: { strapi: Core.Strapi }) => ({
    * Remove the scheduled-export config for a form (Pro feature).
    * DELETE /formflow/forms/:formId/submissions/schedule-export
    *
-   * Clears the cron entry (via the EE engine) and the persisted config. Gated
-   * behind `can('export.advanced')` for consistency with create.
+   * Clears the cron entry (via the EE engine) and the persisted config. This
+   * monotonic cleanup remains available after an entitlement lapse.
    */
   async removeScheduledExport(ctx: SubmissionContext) {
     const { formId } = ctx.params;
     if (!formId) {
       return ctx.badRequest('Form ID is required');
-    }
-
-    const licenseService = strapi.plugin('formflow').service('license');
-    if (!licenseService.can('export.advanced')) {
-      ctx.status = 402;
-      ctx.body = {
-        error: 'Payment Required',
-        message: 'Scheduled export requires a Pro license.',
-        upsell: 'https://hrahimi270.github.io/formflow/#pricing',
-      };
-      return;
     }
 
     try {

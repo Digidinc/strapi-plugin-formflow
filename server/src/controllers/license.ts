@@ -27,12 +27,26 @@ const licenseController = ({ strapi }: { strapi: Core.Strapi }) => ({
    * controls. Auth-only (no RBAC action): the snapshot is a read-only,
    * non-sensitive state object and never includes the raw license key.
    *
-   * Shape: { tier, state, graceUntil, features } — forwarded verbatim from the
-   * license service's `snapshot()`. The service lookup is lazy (inside the
-   * handler) so core never statically imports the EE engine.
+   * Shape: { tier, state, resolution, graceUntil, features } — forwarded
+   * verbatim from the license service's `snapshot()`. The service lookup is
+   * lazy (inside the handler) so core never statically imports the EE engine.
    */
   state(ctx: LicenseContext) {
     ctx.body = strapi.plugin('formflow').service('license').snapshot();
+  },
+
+  /**
+   * POST /formflow/license/refresh
+   * Revalidate the license, reconcile entitlement-dependent jobs, and return
+   * the same non-sensitive snapshot exposed by the read endpoint.
+   */
+  async refresh(ctx: LicenseContext) {
+    const licenseService = strapi.plugin('formflow').service('license');
+    const premiumJobs = strapi.plugin('formflow').service('premium-jobs');
+
+    await licenseService.refresh();
+    await premiumJobs.reconcile();
+    ctx.body = licenseService.snapshot();
   },
 
   /**

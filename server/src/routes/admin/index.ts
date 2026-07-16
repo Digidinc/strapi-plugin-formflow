@@ -206,6 +206,14 @@ export default {
         policies: ['admin::isAuthenticatedAdmin'],
       },
     },
+    {
+      method: 'POST',
+      path: '/license/refresh',
+      handler: 'license.refresh',
+      config: {
+        policies: ['admin::isAuthenticatedAdmin'],
+      },
+    },
 
     // Form analytics dashboard (Pro feature; gated 402 in the controller).
     // Reuses form.read — viewing a form's analytics implies the right to read it.

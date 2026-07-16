@@ -8,6 +8,7 @@ import { FormEditPage } from './FormEditPage';
 import { SubmissionsListPage } from './SubmissionsListPage';
 import { SubmissionDetailPage } from './SubmissionDetailPage';
 import { PERMISSIONS } from '../permissions';
+import { LicenseStatusNotice } from '../ee/components/LicenseStatusNotice';
 import { LicenseProvider } from '../ee/providers/LicenseProvider';
 
 // Pro analytics page is lazy-loaded from the ee/ tree so it is split out of the
@@ -36,6 +37,7 @@ const App = () => {
   return (
     <Page.Protect permissions={PERMISSIONS.main}>
       <LicenseProvider>
+        <LicenseStatusNotice />
         <Routes>
           {/* Forms */}
           <Route index element={<FormsListPage />} />

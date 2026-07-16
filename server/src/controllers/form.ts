@@ -1,5 +1,22 @@
 import type { Core } from '@strapi/strapi';
 
+import type { FormField } from '../services/form';
+import type { LicenseResolution } from '../services/license';
+import {
+  hasDuplicateProvidedFieldIds,
+  newConditionalConfigIssues,
+  validateConditionalConfig,
+  type ConditionalConfigIssue,
+} from '../utils/conditional-config';
+import {
+  findFormEntitlementBlock,
+  type FormEntitlementTier,
+  type NewFormData,
+  type OldForm,
+} from '../utils/form-entitlements';
+
+export type { NewFormData, OldForm };
+
 /**
  * Koa context interface for controller methods
  */
@@ -14,154 +31,145 @@ export interface Context {
   throw: (status: number, error: unknown) => never;
 }
 
-/**
- * Saved-form baseline passed to the CONFIG entitlement helper. `null` on create.
- */
-export interface OldForm {
-  settings?: {
-    layout?: string;
-    steps?: unknown[];
-    customCss?: string;
+const UPGRADE_URL = 'https://hrahimi270.github.io/formflow/#pricing';
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const hasFields = (data: Record<string, unknown>): boolean =>
+  Object.prototype.hasOwnProperty.call(data, 'fields');
+
+const isFieldsPayload = (value: unknown): value is FormField[] =>
+  Array.isArray(value) &&
+  value.every(
+    (field) => isRecord(field) && (field.id === undefined || typeof field.id === 'string')
+  );
+
+const licenseCan =
+  (strapi: Core.Strapi) =>
+  (feature: string): boolean =>
+    strapi.plugin('formflow').service('license').can(feature);
+
+const conditionalValidationResponse = (
+  ctx: Context,
+  conditionalIssues: ConditionalConfigIssue[]
+) => {
+  ctx.status = 400;
+  return {
+    error: {
+      status: 400,
+      name: 'ValidationError',
+      message: 'Conditional configuration is invalid.',
+      details: { conditionalIssues },
+    },
   };
-  fields?: Array<{ type?: string; conditional?: unknown }>;
-  requiresApproval?: boolean;
-  locales?: Record<string, unknown>;
-}
+};
 
-/**
- * Incoming form payload (create/update body) checked by the entitlement helper.
- */
-export interface NewFormData {
-  settings?: {
-    layout?: string;
-    steps?: unknown[];
-    customCss?: string;
+const fieldsValidationResponse = (ctx: Context) => {
+  ctx.status = 400;
+  return {
+    error: {
+      status: 400,
+      name: 'ValidationError',
+      message: 'Fields must be an array of objects.',
+      details: {},
+    },
   };
-  fields?: Array<{ type?: string; conditional?: unknown }>;
-  requiresApproval?: boolean;
-  locales?: Record<string, unknown>;
-}
+};
 
-/**
- * CONFIG entitlement gate. Diffs the saved form (old) against the incoming
- * payload (new) and blocks only *newly added* Pro configuration — existing
- * multi-step layouts, conditional rules, Pro fields, and custom CSS always
- * persist regardless of entitlement.
- *
- * Returns `null` when the save is allowed, or `{ entitled: false, feature }`
- * describing the first blocked feature. Never throws: the license lookup is a
- * synchronous, lazy stub that degrades to free-only when EE is absent.
- */
-async function assertSettingsEntitled(
-  strapi: Core.Strapi,
-  oldForm: OldForm | null,
-  newData: NewFormData
-): Promise<{ entitled: boolean; feature: string } | null> {
-  try {
-    // Lazy lookup — never a top-level import of ee/; falls back to free-only stub.
-    const license = strapi.plugin('formflow').service('license');
-
-    const oldSettings = oldForm?.settings ?? {};
-    const newSettings = newData?.settings ?? {};
-    const oldFields = oldForm?.fields ?? [];
-    const newFields = newData?.fields ?? [];
-
-    // Gate #10 — multi-step: switching TO multi-step OR adding new steps
-    if (!license.can('multistep')) {
-      const switchingToMultiStep =
-        newSettings.layout === 'multi-step' && oldSettings.layout !== 'multi-step';
-      const addingSteps =
-        Array.isArray(newSettings.steps) &&
-        (newSettings.steps.length ?? 0) > (oldSettings.steps?.length ?? 0);
-      if (switchingToMultiStep || addingSteps) {
-        return { entitled: false, feature: 'multistep' };
-      }
-    }
-
-    // Gate #11 — conditional logic: newly-added field.conditional on any field
-    if (!license.can('conditionalLogic')) {
-      const oldConditionalCount = oldFields.filter((f) => f.conditional != null).length;
-      const newConditionalCount = newFields.filter((f) => f.conditional != null).length;
-      if (newConditionalCount > oldConditionalCount) {
-        return { entitled: false, feature: 'conditionalLogic' };
-      }
-    }
-
-    // Gate #12 — Pro field types: block fields whose type CHANGES to an
-    //   unlicensed Pro type — both newly-added fields AND existing fields flipped
-    //   to a Pro type. A field that was ALREADY this Pro type persists (never
-    //   re-blocked / stripped — premium-plan.md §10 "existing preserved").
-    //   file is FREE (locked decision); only the 6 Pro types are gated.
-    const PRO_FIELD_TYPES = new Set([
-      'signature',
-      'rating',
-      'address',
-      'richtext',
-      'calculated',
-      'payment',
-    ]);
-    const oldFieldTypeById = new Map<string | undefined, string | undefined>(
-      oldFields.map((f: { id?: string; type?: string }) => [f.id, f.type] as const)
-    );
-    for (const field of newFields) {
-      if (!PRO_FIELD_TYPES.has(field.type ?? '')) continue;
-      // `existingType` is the field's saved type, or undefined when newly added.
-      const id = (field as { id?: string }).id;
-      const existingType = id ? oldFieldTypeById.get(id) : undefined;
-      // Block when the type is newly this Pro type (added OR changed to it).
-      // `existingType === field.type` means it was already this Pro type → persist.
-      if (existingType !== field.type && !license.can(`fields.${field.type}`)) {
-        return { entitled: false, feature: `fields.${field.type}` };
-      }
-    }
-
-    // Gate #17 — consent field (Business): block newly-added `consent`-type
-    // fields when not entitled. Existing consent fields persist (never stripped).
-    if (!license.can('compliance.consent')) {
-      for (const field of newFields) {
-        if (field.type !== 'consent') continue;
-        const id = (field as { id?: string }).id;
-        const existingType = id ? oldFieldTypeById.get(id) : undefined;
-        if (existingType !== 'consent') {
-          return { entitled: false, feature: 'compliance.consent' };
-        }
-      }
-    }
-
-    // Gate #13 — custom CSS: saving NEW non-empty customCss when not entitled
-    if (!license.can('whiteLabel')) {
-      const oldCss = oldSettings.customCss ?? '';
-      const newCss = newSettings.customCss ?? '';
-      if (newCss.trim() !== '' && oldCss.trim() === '') {
-        return { entitled: false, feature: 'whiteLabel' };
-      }
-    }
-
-    // Gate #17 — approval workflows (Business): enabling requiresApproval on a
-    // form that did not previously require it. Turning it OFF is always allowed.
-    if (!license.can('approval')) {
-      if (newData.requiresApproval === true && oldForm?.requiresApproval !== true) {
-        return { entitled: false, feature: 'approval' };
-      }
-    }
-
-    // Gate #17 — multi-language (Business): saving NEW locale content on a form
-    // that previously had none. Existing locales are never stripped on lapse.
-    if (!license.can('multiLanguage')) {
-      const oldHasLocales = Object.keys(oldForm?.locales ?? {}).length > 0;
-      const newHasLocales =
-        newData.locales != null && Object.keys(newData.locales).length > 0;
-      if (newHasLocales && !oldHasLocales) {
-        return { entitled: false, feature: 'multiLanguage' };
-      }
-    }
-
-    return null;
-  } catch {
-    // License lookup must never block a save — default to allow.
-    return null;
+const formPayloadValidationError = (data: Record<string, unknown>): string | null => {
+  if (
+    Object.prototype.hasOwnProperty.call(data, 'requiresApproval') &&
+    typeof data.requiresApproval !== 'boolean'
+  ) {
+    return 'requiresApproval must be a boolean.';
   }
+
+  if (
+    isRecord(data.settings) &&
+    Object.prototype.hasOwnProperty.call(data.settings, 'customCss') &&
+    typeof data.settings.customCss !== 'string'
+  ) {
+    return 'settings.customCss must be a string.';
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'locales') && !isRecord(data.locales)) {
+    return 'locales must be an object.';
+  }
+
+  return null;
+};
+
+const formPayloadValidationResponse = (ctx: Context, message: string) => {
+  ctx.status = 400;
+  return {
+    error: {
+      status: 400,
+      name: 'ValidationError',
+      message,
+      details: {},
+    },
+  };
+};
+
+const duplicateFieldIdsResponse = (ctx: Context) => {
+  ctx.status = 400;
+  return {
+    error: {
+      status: 400,
+      name: 'ValidationError',
+      message: 'Provided field IDs must be unique.',
+      details: {},
+    },
+  };
+};
+
+export interface FormPaymentRequiredMetadata {
+  message: string;
+  requiredTier?: FormEntitlementTier;
 }
+
+export const formPaymentRequiredMetadata = (
+  feature: string,
+  requiredTier?: FormEntitlementTier
+): FormPaymentRequiredMetadata => {
+  if (requiredTier !== 'pro' && requiredTier !== 'business') {
+    return { message: `This feature is not available on the current plan: ${feature}` };
+  }
+
+  return {
+    message: `Upgrade to ${requiredTier === 'business' ? 'Business' : 'Pro'} to use feature: ${feature}`,
+    requiredTier,
+  };
+};
+
+const paymentRequiredResponse = (
+  ctx: Context,
+  feature: string,
+  requiredTier: FormEntitlementTier,
+  resolution: LicenseResolution
+) => {
+  const metadata = formPaymentRequiredMetadata(feature, requiredTier);
+  const canOfferUpgrade = resolution === 'resolved' && metadata.requiredTier !== undefined;
+  const message =
+    resolution === 'resolved'
+      ? metadata.message
+      : 'FormFlow could not verify premium access. Check the license status, then retry saving.';
+  ctx.status = 402;
+  return {
+    error: {
+      status: 402,
+      name: 'PaymentRequired',
+      message,
+      details: {
+        feature,
+        resolution,
+        ...(metadata.requiredTier ? { requiredTier: metadata.requiredTier } : {}),
+        ...(canOfferUpgrade ? { upgradeUrl: UPGRADE_URL } : {}),
+      },
+    },
+  };
+};
 
 const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
   /**
@@ -271,17 +279,34 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
       return ctx.throw(400, new Error('Form title is required'));
     }
 
-    const entitlementBlock = await assertSettingsEntitled(strapi, null, data as NewFormData);
+    const payloadValidationError = formPayloadValidationError(data);
+    if (payloadValidationError) {
+      return formPayloadValidationResponse(ctx, payloadValidationError);
+    }
+
+    if (hasFields(data) && !isFieldsPayload(data.fields)) {
+      return fieldsValidationResponse(ctx);
+    }
+    if (hasFields(data) && hasDuplicateProvidedFieldIds(data.fields as FormField[])) {
+      return duplicateFieldIdsResponse(ctx);
+    }
+
+    const newData = data as NewFormData;
+    const conditionalIssues = hasFields(data)
+      ? validateConditionalConfig(newData.fields as FormField[])
+      : [];
+    if (conditionalIssues.length > 0) {
+      return conditionalValidationResponse(ctx, conditionalIssues);
+    }
+
+    const entitlementBlock = findFormEntitlementBlock(null, newData, licenseCan(strapi));
     if (entitlementBlock) {
-      ctx.status = 402;
-      return {
-        error: {
-          status: 402,
-          name: 'PaymentRequired',
-          message: `Upgrade to Pro to use feature: ${entitlementBlock.feature}`,
-          details: { feature: entitlementBlock.feature, upgradeUrl: 'https://hrahimi270.github.io/formflow/#pricing' },
-        },
-      };
+      return paymentRequiredResponse(
+        ctx,
+        entitlementBlock.feature,
+        entitlementBlock.requiredTier,
+        strapi.plugin('formflow').service('license').resolution()
+      );
     }
 
     try {
@@ -311,6 +336,11 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
       return ctx.throw(400, new Error('Request body is required'));
     }
 
+    const payloadValidationError = formPayloadValidationError(data);
+    if (payloadValidationError) {
+      return formPayloadValidationResponse(ctx, payloadValidationError);
+    }
+
     try {
       // First check if form exists
       const existing = await strapi.plugin('formflow').service('form').findOne(id);
@@ -319,24 +349,33 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
         return ctx.notFound('Form not found');
       }
 
-      const entitlementBlock = await assertSettingsEntitled(
-        strapi,
-        existing as OldForm,
-        data as NewFormData
-      );
+      if (hasFields(data) && !isFieldsPayload(data.fields)) {
+        return fieldsValidationResponse(ctx);
+      }
+      if (hasFields(data) && hasDuplicateProvidedFieldIds(data.fields as FormField[])) {
+        return duplicateFieldIdsResponse(ctx);
+      }
+
+      const oldForm = existing as OldForm;
+      const newData = data as NewFormData;
+      const conditionalIssues = hasFields(data)
+        ? newConditionalConfigIssues(
+            (oldForm.fields ?? []) as FormField[],
+            newData.fields as FormField[]
+          )
+        : [];
+      if (conditionalIssues.length > 0) {
+        return conditionalValidationResponse(ctx, conditionalIssues);
+      }
+
+      const entitlementBlock = findFormEntitlementBlock(oldForm, newData, licenseCan(strapi));
       if (entitlementBlock) {
-        ctx.status = 402;
-        return {
-          error: {
-            status: 402,
-            name: 'PaymentRequired',
-            message: `Upgrade to Pro to use feature: ${entitlementBlock.feature}`,
-            details: {
-              feature: entitlementBlock.feature,
-              upgradeUrl: 'https://hrahimi270.github.io/formflow/#pricing',
-            },
-          },
-        };
+        return paymentRequiredResponse(
+          ctx,
+          entitlementBlock.feature,
+          entitlementBlock.requiredTier,
+          strapi.plugin('formflow').service('license').resolution()
+        );
       }
 
       const form = await strapi.plugin('formflow').service('form').update(id, data);
@@ -388,7 +427,43 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
     }
 
     try {
-      const form = await strapi.plugin('formflow').service('form').duplicate(id);
+      const formService = strapi.plugin('formflow').service('form');
+      const proposedDuplicate = await formService.prepareDuplicate(id);
+      if (!isRecord(proposedDuplicate)) {
+        return fieldsValidationResponse(ctx);
+      }
+      const payloadValidationError = formPayloadValidationError(proposedDuplicate);
+      if (payloadValidationError) {
+        return formPayloadValidationResponse(ctx, payloadValidationError);
+      }
+      if (hasFields(proposedDuplicate) && !isFieldsPayload(proposedDuplicate.fields)) {
+        return fieldsValidationResponse(ctx);
+      }
+      if (
+        hasFields(proposedDuplicate) &&
+        hasDuplicateProvidedFieldIds(proposedDuplicate.fields as FormField[])
+      ) {
+        return duplicateFieldIdsResponse(ctx);
+      }
+      const newData = proposedDuplicate as NewFormData;
+      const conditionalIssues = hasFields(proposedDuplicate)
+        ? validateConditionalConfig(newData.fields as FormField[])
+        : [];
+      if (conditionalIssues.length > 0) {
+        return conditionalValidationResponse(ctx, conditionalIssues);
+      }
+
+      const entitlementBlock = findFormEntitlementBlock(null, newData, licenseCan(strapi));
+      if (entitlementBlock) {
+        return paymentRequiredResponse(
+          ctx,
+          entitlementBlock.feature,
+          entitlementBlock.requiredTier,
+          strapi.plugin('formflow').service('license').resolution()
+        );
+      }
+
+      const form = await formService.create(proposedDuplicate);
 
       ctx.status = 201;
       return { data: form };

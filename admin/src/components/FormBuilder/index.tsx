@@ -14,7 +14,7 @@ import {
   SingleSelectOption,
   Dialog,
 } from '@strapi/design-system';
-import { ConfirmDialog } from '@strapi/strapi/admin';
+import { ConfirmDialog, useNotification } from '@strapi/strapi/admin';
 import { Plus, Trash, Pencil, Drag, Duplicate, WarningCircle } from '@strapi/icons';
 import { useIntl } from 'react-intl';
 import { v4 as uuidv4 } from 'uuid';
@@ -27,7 +27,13 @@ import { FieldEditor } from './FieldEditor';
 import { FieldPreview } from './FieldPreview';
 import { StepsManager } from '../../ee/components/FormBuilder/StepsManager';
 import { useLicense } from '../../ee/hooks/useLicense';
+import { accessPresentation } from '../../ee/license-state';
 import type { FormField, FormSettings, FormStep } from '../../utils/api';
+import {
+  conditionalDependents,
+  deleteFieldAndConditions,
+  renameFieldAndCascade,
+} from './conditional-relations';
 
 export interface FormBuilderProps {
   fields: FormField[];
@@ -154,7 +160,8 @@ const DragHandle = styled(Flex)`
  */
 export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: FormBuilderProps) => {
   const { formatMessage } = useIntl();
-  const { can } = useLicense();
+  const { access } = useLicense();
+  const { toggleNotification } = useNotification();
   const { fieldTypes, isLoading: isLoadingFieldTypes } = useFieldTypes();
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
@@ -163,6 +170,33 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   // Field id queued for deletion; non-null while the confirm dialog is open.
   const [fieldPendingDeletion, setFieldPendingDeletion] = useState<string | null>(null);
+
+  const conditionalAccess = access('conditionalLogic');
+  const multistepAccess = access('multistep');
+  const conditionalRequiresProMessage = formatMessage({
+    id: getTranslation('fieldEditor.conditional.requiresPro'),
+    defaultMessage: 'Conditional Logic requires a Pro plan.',
+  });
+  const licenseVerificationUnavailableMessage = formatMessage({
+    id: getTranslation('license.unavailable'),
+    defaultMessage:
+      'FormFlow could not verify the current license. Premium controls are temporarily unavailable. Free features remain available.',
+  });
+  const licenseCheckingMessage = formatMessage({
+    id: getTranslation('license.checking'),
+    defaultMessage: 'Checking FormFlow license…',
+  });
+  const multistepAssignmentHint =
+    multistepAccess === 'checking'
+      ? licenseCheckingMessage
+      : multistepAccess === 'unavailable'
+        ? licenseVerificationUnavailableMessage
+        : multistepAccess === 'unentitled'
+          ? formatMessage({
+              id: getTranslation('builder.steps.assign.requiresPro'),
+              defaultMessage: 'Step assignment requires a Pro plan.',
+            })
+          : undefined;
 
   const isMultiStep = settings.layout === 'multi-step';
   const steps = useMemo<FormStep[]>(() => settings.steps || [], [settings.steps]);
@@ -201,19 +235,29 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
   const handleFieldUpdate = useCallback(
     (updates: Partial<FormField>) => {
       if (!selectedFieldId) return;
+      const selected = fields.find((field) => field.id === selectedFieldId);
+      if (!selected) return;
+
       // The field `name` is the submission-data key and must stay unique. If a
       // rename collides with another field's name, append a numeric suffix.
-      const nextUpdates =
-        updates.name !== undefined
-          ? {
-              ...updates,
-              name: makeUniqueName(
-                updates.name,
-                fields.filter((f) => f.id !== selectedFieldId).map((f) => f.name)
-              ),
-            }
-          : updates;
-      onChange(fields.map((f) => (f.id === selectedFieldId ? { ...f, ...nextUpdates } : f)));
+      const finalName =
+        updates.name === undefined
+          ? selected.name
+          : makeUniqueName(
+              updates.name,
+              fields.filter((field) => field.id !== selectedFieldId).map((field) => field.name)
+            );
+      const cascadedFields =
+        finalName === selected.name
+          ? fields
+          : renameFieldAndCascade(fields, selectedFieldId, finalName);
+      const nextUpdates = updates.name === undefined ? updates : { ...updates, name: finalName };
+
+      onChange(
+        cascadedFields.map((field) =>
+          field.id === selectedFieldId ? { ...field, ...nextUpdates } : field
+        )
+      );
     },
     [fields, onChange, selectedFieldId]
   );
@@ -222,6 +266,19 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
     (fieldId: string) => {
       const original = fields.find((f) => f.id === fieldId);
       if (!original) return;
+      if (original.conditional && conditionalAccess !== 'entitled') {
+        const presentation = accessPresentation(conditionalAccess);
+        toggleNotification({
+          type: 'info',
+          message: presentation.showUpgrade
+            ? conditionalRequiresProMessage
+            : presentation.reason === 'checking'
+              ? licenseCheckingMessage
+              : licenseVerificationUnavailableMessage,
+        });
+        return;
+      }
+
       const copy: FormField = {
         ...original,
         id: uuidv4(),
@@ -235,7 +292,15 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
       };
       onChange([...fields, copy]);
     },
-    [fields, onChange]
+    [
+      conditionalAccess,
+      conditionalRequiresProMessage,
+      fields,
+      licenseCheckingMessage,
+      licenseVerificationUnavailableMessage,
+      onChange,
+      toggleNotification,
+    ]
   );
 
   // Queue a field for deletion (opens the confirm dialog). Deleting a fully
@@ -252,7 +317,8 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
     const fieldId = fieldPendingDeletion;
     if (!fieldId) return;
     const target = fields.find((f) => f.id === fieldId);
-    onChange(fields.filter((f) => f.id !== fieldId).map((f, index) => ({ ...f, order: index })));
+    const deletion = deleteFieldAndConditions(fields, fieldId);
+    onChange(deletion.fields.map((field, index) => ({ ...field, order: index })));
     // Also unassign the field from any multi-step step. Step membership is
     // keyed by the stable field id (not the mutable name).
     if (target && steps.length > 0) {
@@ -274,6 +340,16 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
   const fieldToDelete = useMemo(
     () => fields.find((f) => f.id === fieldPendingDeletion) || null,
     [fields, fieldPendingDeletion]
+  );
+
+  const conditionalDependentsToDelete = useMemo(
+    () =>
+      fieldToDelete
+        ? conditionalDependents(fields, fieldToDelete.name).filter(
+            (field) => field.id !== fieldToDelete.id
+          )
+        : [],
+    [fieldToDelete, fields]
   );
 
   const handleEditorClose = useCallback(() => {
@@ -355,7 +431,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
           steps={steps}
           settings={settings}
           onSettingsChange={onSettingsChange}
-          canEdit={can('multistep')}
+          access={multistepAccess}
         />
       )}
 
@@ -414,9 +490,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
                 >
                   <FieldCard
                     draggable
-                    onDragStart={(e: React.DragEvent<HTMLDivElement>) =>
-                      handleDragStart(e, index)
-                    }
+                    onDragStart={(e: React.DragEvent<HTMLDivElement>) => handleDragStart(e, index)}
                     onDragOver={(e: React.DragEvent<HTMLDivElement>) => handleDragOver(e, index)}
                     onDrop={(e: React.DragEvent<HTMLDivElement>) => handleDrop(e, index)}
                     onDragEnd={handleDragEnd}
@@ -517,7 +591,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
                         <Box marginTop={3} marginBottom={3}>
                           <Divider />
                         </Box>
-                        <Field.Root name={`field-step-${field.id}`}>
+                        <Field.Root name={`field-step-${field.id}`} hint={multistepAssignmentHint}>
                           <Field.Label>
                             {formatMessage({
                               id: getTranslation('builder.steps.assign'),
@@ -529,7 +603,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
                             onChange={(value: string | number) =>
                               handleAssignFieldToStep(field.id, value ? String(value) : null)
                             }
-                            disabled={!can('multistep')}
+                            disabled={multistepAccess !== 'entitled'}
                           >
                             <SingleSelectOption value="">
                               {formatMessage({
@@ -543,6 +617,7 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
                               </SingleSelectOption>
                             ))}
                           </SingleSelect>
+                          <Field.Hint />
                         </Field.Root>
                       </>
                     )}
@@ -604,14 +679,34 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
           onConfirm={handleFieldDeleteConfirm}
           onCancel={handleFieldDeleteCancel}
         >
-          {formatMessage(
-            {
-              id: getTranslation('builder.field.delete.confirm.body'),
-              defaultMessage:
-                'Are you sure you want to delete the field "{label}"? This will remove its configuration and cannot be undone.',
-            },
-            { label: fieldToDelete?.label || fieldToDelete?.name || '' }
-          )}
+          <Flex direction="column" gap={2} alignItems="stretch">
+            <Typography>
+              {formatMessage(
+                {
+                  id: getTranslation('builder.field.delete.confirm.body'),
+                  defaultMessage:
+                    'Are you sure you want to delete the field "{label}"? This will remove its configuration and cannot be undone.',
+                },
+                { label: fieldToDelete?.label || fieldToDelete?.name || '' }
+              )}
+            </Typography>
+            {conditionalDependentsToDelete.length > 0 ? (
+              <Typography>
+                {formatMessage(
+                  {
+                    id: getTranslation('builder.field.delete.confirm.dependents'),
+                    defaultMessage:
+                      'The conditional rules for these fields will also be removed: {labels}.',
+                  },
+                  {
+                    labels: conditionalDependentsToDelete
+                      .map((field) => field.label || field.name)
+                      .join(', '),
+                  }
+                )}
+              </Typography>
+            ) : null}
+          </Flex>
         </ConfirmDialog>
       </Dialog.Root>
     </>

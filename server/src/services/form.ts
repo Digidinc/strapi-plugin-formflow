@@ -312,13 +312,12 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
   },
 
   /**
-   * Duplicate an existing form with a new title and a unique slug.
+   * Prepare the exact create payload for a duplicated form.
    *
-   * create() does not backfill a slug, so we must generate one here; otherwise
-   * the copy is saved with slug:null, which breaks the editor and 404s the
-   * public API.
+   * Field IDs are regenerated, and every configuration keyed by those IDs is
+   * remapped before the payload is validated or persisted.
    */
-  async duplicate(documentId: string) {
+  async prepareDuplicate(documentId: string) {
     const original = await this.findOne(documentId);
 
     if (!original) {
@@ -326,29 +325,90 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
     }
 
     // Extract only the data fields we need, excluding system fields
-    const { title, slug, description, fields, settings, successMessage, redirectUrl, isActive } =
-      original;
+    const {
+      title,
+      slug,
+      description,
+      fields,
+      settings,
+      successMessage,
+      redirectUrl,
+      isActive,
+      requiresApproval,
+      locales,
+    } = original;
 
-    // Generate new field IDs for the duplicated form to ensure uniqueness
+    const fieldIdMap = new Map<string, string>();
     const duplicatedFields = Array.isArray(fields)
-      ? fields.map((field: FormField) => ({
-          ...field,
-          id: uuidv4(),
-        }))
+      ? fields.map((field: FormField) => {
+          const nextId = uuidv4();
+          fieldIdMap.set(field.id, nextId);
+          return { ...field, id: nextId };
+        })
       : [];
+
+    const originalSettings = (settings ?? {}) as Partial<FormSettings>;
+    const duplicatedSettings: Partial<FormSettings> = {
+      ...originalSettings,
+      ...(Array.isArray(originalSettings.steps)
+        ? {
+            steps: originalSettings.steps.map((step) => ({
+              ...step,
+              fields: step.fields
+                .map((fieldId) => fieldIdMap.get(fieldId))
+                .filter((fieldId): fieldId is string => Boolean(fieldId)),
+            })),
+          }
+        : {}),
+    };
+
+    const originalLocales = (locales ?? {}) as FormLocales;
+    const duplicatedLocales = Object.fromEntries(
+      Object.entries(originalLocales).map(([locale, content]) => {
+        const remappedFields = content.fields
+          ? Object.fromEntries(
+              Object.entries(content.fields).flatMap(([fieldId, override]) => {
+                const nextId = fieldIdMap.get(fieldId);
+                return nextId ? [[nextId, override]] : [];
+              })
+            )
+          : undefined;
+
+        return [
+          locale,
+          {
+            ...content,
+            ...(remappedFields === undefined ? {} : { fields: remappedFields }),
+          },
+        ];
+      })
+    ) as FormLocales;
 
     const newSlug = await this.generateUniqueSlug(slug as string);
 
-    return this.create({
+    return {
       title: `${title} (Copy)`,
       slug: newSlug,
       description,
       fields: duplicatedFields,
-      settings: settings as Partial<FormSettings>,
+      settings: duplicatedSettings,
       successMessage,
       redirectUrl,
       isActive,
-    });
+      requiresApproval,
+      locales: duplicatedLocales,
+    };
+  },
+
+  /**
+   * Duplicate an existing form with a new title and a unique slug.
+   *
+   * create() does not backfill a slug, so the prepared payload must include one;
+   * otherwise the copy is saved with slug:null, which breaks the editor and
+   * 404s the public API.
+   */
+  async duplicate(documentId: string) {
+    return this.create(await this.prepareDuplicate(documentId));
   },
 
   /**
@@ -387,9 +447,7 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
       slug: form.slug,
       // Localized success message takes precedence; omitted when neither the
       // locale nor the form provides one (keeps the default response shape).
-      ...(localeContent?.successMessage
-        ? { successMessage: localeContent.successMessage }
-        : {}),
+      ...(localeContent?.successMessage ? { successMessage: localeContent.successMessage } : {}),
       fields: fields.map((field) => {
         const override = fieldOverrides[field.id] ?? {};
         return {
@@ -418,9 +476,7 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
         resetButtonText: settings.resetButtonText || 'Reset',
         layout: settings.layout || 'single',
         // Expose steps only for multi-step layouts so the frontend can render them
-        ...(settings.layout === 'multi-step' && settings.steps
-          ? { steps: settings.steps }
-          : {}),
+        ...(settings.layout === 'multi-step' && settings.steps ? { steps: settings.steps } : {}),
         // Expose custom CSS only when set so the consuming frontend can inject
         // it (e.g. into a <style> tag). Omitted entirely when empty, keeping the
         // response shape unchanged for existing forms.
@@ -544,10 +600,28 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
       { type: 'divider', label: 'Divider', icon: 'minus', category: 'layout', tier: 'free' },
 
       // Pro field types (Phase 2 validates/sanitizes; admin shows locked tiles)
-      { type: 'signature', label: 'Signature', icon: 'pen-tool', category: 'advanced', tier: 'pro' },
+      {
+        type: 'signature',
+        label: 'Signature',
+        icon: 'pen-tool',
+        category: 'advanced',
+        tier: 'pro',
+      },
       { type: 'rating', label: 'Rating / NPS', icon: 'star', category: 'advanced', tier: 'pro' },
-      { type: 'address', label: 'Address + Map', icon: 'map-pin', category: 'advanced', tier: 'pro' },
-      { type: 'richtext', label: 'Rich Text', icon: 'align-left', category: 'advanced', tier: 'pro' },
+      {
+        type: 'address',
+        label: 'Address + Map',
+        icon: 'map-pin',
+        category: 'advanced',
+        tier: 'pro',
+      },
+      {
+        type: 'richtext',
+        label: 'Rich Text',
+        icon: 'align-left',
+        category: 'advanced',
+        tier: 'pro',
+      },
       {
         type: 'calculated',
         label: 'Calculated Field',

@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { useFetchClient } from '@strapi/strapi/admin';
 
 import { API } from '../../utils/api';
+import { refreshLicenseOnPaymentRequired } from '../payment-required';
+import { useLicense } from './useLicense';
 
 export interface AnalyticsStats {
   views: number;
@@ -21,13 +23,13 @@ export interface UseAnalyticsResult {
 /**
  * Fetch aggregated analytics for a form from `GET /formflow/forms/:id/analytics`.
  *
- * The server Pro-gates this endpoint with a 402. A 402 is NOT surfaced as an
- * error here — the caller decides display via `can('analytics')` and renders the
- * UpsellCard — so on 402 we leave both `stats` and `error` null. Any other
- * failure sets `error` to a message string.
+ * The server Pro-gates this endpoint with a 402. An authoritative 402 refreshes
+ * the shared license snapshot so the page can render the current access state.
+ * Any other failure sets `error` to a message string.
  */
 export const useAnalytics = (formDocumentId: string): UseAnalyticsResult => {
   const { get } = useFetchClient();
+  const { refresh } = useLicense();
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,20 +58,11 @@ export const useAnalytics = (formDocumentId: string): UseAnalyticsResult => {
           return;
         }
 
-        const fetchErr = err as {
-          status?: number;
-          response?: { status?: number; data?: { error?: { status?: number } } };
-        };
-        const status =
-          fetchErr?.response?.data?.error?.status ??
-          fetchErr?.response?.status ??
-          fetchErr?.status;
+        if (await refreshLicenseOnPaymentRequired(err, refresh)) {
+          return;
+        }
 
-        // 402 = unentitled. The caller renders an UpsellCard, not an error state.
-        if (status === 402) {
-          setStats(null);
-          setError(null);
-        } else {
+        if (!cancelled) {
           setStats(null);
           setError(err instanceof Error ? err.message : 'Failed to load analytics');
         }
@@ -85,7 +78,7 @@ export const useAnalytics = (formDocumentId: string): UseAnalyticsResult => {
     return () => {
       cancelled = true;
     };
-  }, [get, formDocumentId]);
+  }, [get, formDocumentId, refresh]);
 
   return { stats, isLoading, error };
 };

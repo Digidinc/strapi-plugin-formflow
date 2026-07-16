@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto';
 
 import type { Core } from '@strapi/strapi';
 
+import { isEmptyValue, partitionFieldsByVisibility } from '../utils/validation-rules';
 import type { ValidatableField, UploadedFileMeta, UploadedFilesMap } from './validation';
 
 /**
@@ -288,16 +289,47 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
     }
 
     const formFields = form.fields || [];
+    const visibilityData = { ...submissionData };
+    for (const field of formFields) {
+      if (field.type === 'file') {
+        // Multipart files live outside the request body. Mirror their raw
+        // presence into this one-time visibility snapshot so file sources work
+        // with is_empty/is_not_empty before validation or upload. This value is
+        // never written back to submissionData, so only uploaded media refs are
+        // persisted later.
+        visibilityData[field.name] = files[field.name];
+      } else if (field.type === 'checkbox') {
+        // Formidable returns one repeated multipart field as a scalar and two or
+        // more as an array. Restore the checkbox's multi-value shape before
+        // evaluating visibility so `contains` always means exact membership.
+        const value = visibilityData[field.name];
+        if (value !== undefined && value !== null && !Array.isArray(value)) {
+          visibilityData[field.name] = isEmptyValue(value) ? [] : [value];
+        }
+      }
+    }
+    const { visible: visibleFields, hidden: hiddenFields } = partitionFieldsByVisibility(
+      formFields,
+      visibilityData
+    );
+    const discardedHiddenFields = hiddenFields
+      .filter((field) => !isEmptyValue(visibilityData[field.name]))
+      .map((field) => field.name);
+    if (discardedHiddenFields.length > 0) {
+      strapi.log.warn(
+        `[FormFlow] Discarding non-empty values for fields hidden by conditional visibility: ${JSON.stringify(discardedHiddenFields)}. Their rule failed or a source field resolved hidden or invalid.`
+      );
+    }
 
     // Validate non-file submission data against form field definitions.
-    const validationResult = validationService.validate(formFields, submissionData);
+    const validationResult = validationService.validate(visibleFields, visibilityData);
 
     // Validate uploaded files (required/maxSize/allowedTypes) BEFORE persisting
     // anything to the media library, so oversize/disallowed files never land.
     const fileValidationResult = validationService.validateFiles(
-      formFields,
+      visibleFields,
       files,
-      submissionData
+      visibilityData
     );
 
     // Merge field-level errors from both passes and reject as one response.
@@ -312,10 +344,10 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     // Files passed validation: upload them to the media library and place the
     // resulting media references into the submission data under each field name.
-    await this.processFileUploads(formFields, files, submissionData);
+    await this.processFileUploads(visibleFields, files, submissionData);
 
     // Sanitize data before storage
-    const sanitizedData = validationService.sanitize(formFields, submissionData);
+    const sanitizedData = validationService.sanitize(visibleFields, submissionData);
 
     // Optionally anonymize the submitter IP before it is persisted. When the
     // plugin config `anonymizeIp` is false (the default) the raw IP is stored
@@ -368,9 +400,7 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
           formVersion: form.updatedAt,
         },
         status: 'new' as SubmissionStatus,
-        ...(form.requiresApproval
-          ? { approvalStatus: 'pending' as ApprovalStatus }
-          : {}),
+        ...(form.requiresApproval ? { approvalStatus: 'pending' as ApprovalStatus } : {}),
         ipAddress: storedIpAddress,
         userAgent: metadata.userAgent,
       },
@@ -395,7 +425,7 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
     if (canConsent) {
       try {
         const capturedAt = new Date().toISOString();
-        const consents = formFields
+        const consents = visibleFields
           .filter((field) => field.type === 'consent')
           .map((field) => ({
             field: field.name,
@@ -540,10 +570,7 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
    * @param steps - The form's defined steps
    * @param indicator - Step id or zero-based index
    */
-  resolveStep(
-    steps: FormStepDefinition[],
-    indicator: string | number
-  ): FormStepDefinition | null {
+  resolveStep(steps: FormStepDefinition[], indicator: string | number): FormStepDefinition | null {
     // Prefer an exact id match.
     const byId = steps.find((s) => s.id === String(indicator));
     if (byId) {
@@ -1072,7 +1099,9 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
-        strapi.log.error(`[FormFlow] Autoresponder dispatch failed for form "${form.title}": ${message}`);
+        strapi.log.error(
+          `[FormFlow] Autoresponder dispatch failed for form "${form.title}": ${message}`
+        );
       }
       // --- End Gate #6 ---
     }

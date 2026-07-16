@@ -3,6 +3,7 @@ import {
   isLayoutField,
   isFieldVisible,
   isEmptyValue,
+  partitionFieldsByVisibility,
   validateUploadedFile,
   type ConditionalRule,
   type UploadedFileMeta,
@@ -73,6 +74,11 @@ export type UploadedFilesMap = Record<string, UploadedFileMeta | UploadedFileMet
 const validationService = ({ strapi }: { strapi: Core.Strapi }) => ({
   /**
    * Validate form submission data against field definitions
+   *
+   * Conditional checks here are intentionally flat. Full-submission callers
+   * must first pass fields through `partitionFieldsByVisibility`; `submit()`
+   * does so, while `validateSubset()` resolves the graph before calling this
+   * method with the visible subset.
    * @param fields - Array of form field definitions
    * @param data - Submission data to validate
    * @returns ValidationResult with valid flag and error messages by field name
@@ -167,9 +173,10 @@ const validationService = ({ strapi }: { strapi: Core.Strapi }) => ({
    * Matching: a field is included when its `id` OR its `name` is present in
    * `fieldKeys`. Step definitions store field IDs (`settings.steps[].fields`),
    * but matching on name as well keeps the helper usable with name-based lists.
-   * Conditional visibility is still evaluated against the FULL `data` object, so
-   * a step field that depends on a value entered on an earlier step is resolved
-   * correctly.
+   * Conditional visibility is resolved against the FULL field graph and `data`
+   * object, so a step field that depends on a visible value entered on an
+   * earlier step is resolved correctly while descendants of hidden sources stay
+   * hidden.
    *
    * @param fields - Full array of form field definitions
    * @param fieldKeys - Field ids and/or names that belong to the subset
@@ -183,16 +190,21 @@ const validationService = ({ strapi }: { strapi: Core.Strapi }) => ({
   ): ValidationResult {
     const keySet = fieldKeys instanceof Set ? fieldKeys : new Set(fieldKeys);
 
-    const subset = fields.filter(
+    const { visible } = partitionFieldsByVisibility(fields, data);
+    const subset = visible.filter(
       (field) => (field.id !== undefined && keySet.has(field.id)) || keySet.has(field.name)
     );
 
-    // Reuse the exact full-form per-field logic on the filtered subset.
+    // Reuse the exact full-form per-field validation on the visible subset.
     return this.validate(subset, data);
   },
 
   /**
    * Validate uploaded files against the form's `file` field definitions.
+   *
+   * Conditional checks here are intentionally flat. Full-submission callers
+   * must first pass fields through `partitionFieldsByVisibility`; `submit()`
+   * does so. Step validation defers file fields and does not call this method.
    *
    * Runs BEFORE the files are uploaded to the media library, so oversize or
    * disallowed files are rejected without ever being persisted. Enforces:
@@ -783,8 +795,7 @@ const validationService = ({ strapi }: { strapi: Core.Strapi }) => ({
         if (value && typeof value === 'object' && !Array.isArray(value)) {
           const cleaned: Record<string, unknown> = {};
           for (const [key, fieldValue] of Object.entries(value)) {
-            cleaned[key] =
-              typeof fieldValue === 'string' ? cleanString(fieldValue) : fieldValue;
+            cleaned[key] = typeof fieldValue === 'string' ? cleanString(fieldValue) : fieldValue;
           }
           return cleaned;
         }

@@ -7,6 +7,7 @@ import webhook from './webhook';
 import license from './license';
 import analytics from './analytics';
 import telemetry from './telemetry';
+import premiumJobs from './premium-jobs';
 
 export default {
   form,
@@ -18,4 +19,5 @@ export default {
   license,
   analytics,
   telemetry,
+  'premium-jobs': premiumJobs,
 };
