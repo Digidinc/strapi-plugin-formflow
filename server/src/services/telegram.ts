@@ -7,6 +7,8 @@ export interface TelegramService {
   deleteConnection(id: string): Promise<unknown>;
   resolveCredential(id: string): Promise<string>;
   validateCredential(input: unknown): Promise<unknown>;
+  sendRichNotification(input: unknown): Promise<unknown>;
+  dispatchForSubmission(form: unknown, submission: unknown): void;
 }
 
 interface EeTelegramService extends TelegramService {}
@@ -43,6 +45,7 @@ const telegramService = ({ strapi }: { strapi: Core.Strapi }): TelegramService =
           license: plugin.service('license'),
           fetch: globalThis.fetch as any,
           referenceCount: (id: string) => countTelegramConnectionReferences(strapi, id),
+          logger: strapi.log,
         }) as EeTelegramService;
       } catch {
         implementation = null;
@@ -62,6 +65,12 @@ const telegramService = ({ strapi }: { strapi: Core.Strapi }): TelegramService =
     async deleteConnection(id) { return (await use()).deleteConnection(id); },
     async resolveCredential(id) { return (await use()).resolveCredential(id); },
     async validateCredential(input) { return (await use()).validateCredential(input); },
+    async sendRichNotification(input) { return (await use()).sendRichNotification(input); },
+    dispatchForSubmission(form, submission) {
+      void use().then((service) => service.dispatchForSubmission(form, submission)).catch(() => {
+        strapi.log.error('Telegram delivery failed', { failure: 'configuration' });
+      });
+    },
   };
 };
 

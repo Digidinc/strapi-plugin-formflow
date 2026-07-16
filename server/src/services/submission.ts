@@ -201,6 +201,12 @@ export interface SubmittableForm {
       headers?: Record<string, string>;
       events?: Array<'submission.created' | 'submission.updated'>;
     }>;
+    telegram?: {
+      enabled: boolean;
+      connectionId: string;
+      destination: string;
+      template: unknown;
+    };
   };
   successMessage?: string;
   redirectUrl?: string;
@@ -454,6 +460,16 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     // Fire-and-forget: analytics completion — must not block or throw
     strapi.plugin('formflow').service('analytics').recordEvent(form.documentId, 'completion');
+
+    // Dispatch only for this persisted final creation. The boundary owns its
+    // terminal rejection handler, so Telegram can never change public success.
+    if (form.settings?.telegram?.enabled) {
+      try {
+        strapi.plugin('formflow').service('telegram').dispatchForSubmission(form, submission);
+      } catch {
+        strapi.log.error('Telegram delivery failed', { failure: 'configuration' });
+      }
+    }
 
     // Trigger post-submission hooks asynchronously (don't block response)
     this.triggerPostSubmissionHooks(form, submission, sanitizedData).catch((error: Error) => {
