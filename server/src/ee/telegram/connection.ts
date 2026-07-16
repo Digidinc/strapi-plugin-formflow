@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TelegramBotMetadata, TelegramConnectionId, TelegramCredentialInput } from './types';
-import { assertEncryptionKey, decryptSecret, encryptSecret, type EncryptedSecret } from './crypto';
+import { assertEncryptionKey, decryptSecret, encryptSecret, isEncryptedSecret, type EncryptedSecret } from './crypto';
 
 const STORE_KEY = 'telegram.connections';
 const ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]*$/;
@@ -23,13 +23,11 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const isStoredConnection = (value: unknown): value is StoredConnection => {
   if (!isObject(value) || typeof value.id !== 'string' || typeof value.name !== 'string' ||
     typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string' || !isObject(value.bot) ||
-    typeof value.bot.id !== 'string' || typeof value.bot.displayName !== 'string' || !isObject(value.tokenSource)) return false;
+    typeof value.bot.id !== 'string' || typeof value.bot.displayName !== 'string' ||
+    (value.bot.username !== undefined && typeof value.bot.username !== 'string') || !isObject(value.tokenSource)) return false;
   const source = value.tokenSource;
   if (source.type === 'environment') return typeof source.variableName === 'string' && ENVIRONMENT_NAME.test(source.variableName);
-  if (source.type !== 'stored' || !isObject(source.secret)) return false;
-  const secret = source.secret;
-  return secret.version === 1 && typeof secret.nonce === 'string' && typeof secret.authTag === 'string' &&
-    typeof secret.ciphertext === 'string';
+  return source.type === 'stored' && isEncryptedSecret(source.secret);
 };
 
 export interface ConnectionDependencies {

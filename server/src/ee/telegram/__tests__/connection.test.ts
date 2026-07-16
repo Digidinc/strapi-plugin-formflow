@@ -130,6 +130,32 @@ test('fails closed on malformed records inside an otherwise versioned store docu
   assert.equal(setCalls, 0);
 });
 
+test('rejects malformed encrypted envelopes and bot usernames without overwriting the store', async () => {
+  const valid = {
+    id: 'stable', name: 'Bot',
+    tokenSource: { type: 'stored', secret: encryptSecret(token, key) },
+    bot: { id: '42', displayName: 'Bot' },
+    createdAt: '2026-07-17T00:00:00.000Z', updatedAt: '2026-07-17T00:00:00.000Z',
+  };
+  const malformed = [
+    { ...valid, tokenSource: { type: 'stored', secret: { ...valid.tokenSource.secret, nonce: `${valid.tokenSource.secret.nonce}\n` } } },
+    { ...valid, tokenSource: { type: 'stored', secret: { ...valid.tokenSource.secret, nonce: Buffer.alloc(11).toString('base64') } } },
+    { ...valid, tokenSource: { type: 'stored', secret: { ...valid.tokenSource.secret, authTag: Buffer.alloc(15).toString('base64') } } },
+    { ...valid, tokenSource: { type: 'stored', secret: { ...valid.tokenSource.secret, ciphertext: `${valid.tokenSource.secret.ciphertext}\n` } } },
+    { ...valid, bot: { ...valid.bot, username: 123 } },
+  ];
+  for (const record of malformed) {
+    let setCalls = 0;
+    const service = createTelegramConnectionService({
+      ...fixture().service.dependencies,
+      store: { get: async () => ({ version: 1, connections: [record] }), set: async () => { setCalls += 1; } },
+    });
+    await assert.rejects(service.listConnections(), /stored Telegram connection data is invalid/i);
+    await assert.rejects(service.deleteConnection('stable'), /stored Telegram connection data is invalid/i);
+    assert.equal(setCalls, 0);
+  }
+});
+
 test('uses explicit keep, replace, and environment actions and preserves ciphertext on failed rotation', async () => {
   const fx = fixture();
   const created = await fx.service.createConnection({ name: 'Original', credential: { type: 'stored', token } });

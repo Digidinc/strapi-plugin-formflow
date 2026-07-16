@@ -9,6 +9,19 @@ export interface EncryptedSecret {
   ciphertext: string;
 }
 
+const isCanonicalBase64 = (value: unknown, decodedLength?: number): value is string => {
+  if (typeof value !== 'string') return false;
+  const decoded = Buffer.from(value, 'base64');
+  return decoded.toString('base64') === value && (decodedLength === undefined || decoded.length === decodedLength);
+};
+
+export function isEncryptedSecret(value: unknown): value is EncryptedSecret {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const secret = value as Record<string, unknown>;
+  return secret.version === 1 && isCanonicalBase64(secret.nonce, 12) &&
+    isCanonicalBase64(secret.authTag, 16) && isCanonicalBase64(secret.ciphertext);
+}
+
 function decodeKey(encoded: string | undefined): Buffer {
   if (!encoded) throw new Error('FORMFLOW_ENCRYPTION_KEY is required to store Telegram credentials.');
   const key = Buffer.from(encoded, 'base64');
@@ -36,10 +49,9 @@ export function encryptSecret(value: string, encodedKey: string | undefined): En
 
 export function decryptSecret(secret: EncryptedSecret, encodedKey: string | undefined): string {
   try {
-    if (secret.version !== 1) throw new Error('unsupported version');
+    if (!isEncryptedSecret(secret)) throw new Error('invalid envelope');
     const nonce = Buffer.from(secret.nonce, 'base64');
     const tag = Buffer.from(secret.authTag, 'base64');
-    if (nonce.length !== 12 || tag.length !== 16) throw new Error('invalid envelope');
     const decipher = createDecipheriv('aes-256-gcm', decodeKey(encodedKey), nonce);
     decipher.setAuthTag(tag);
     return Buffer.concat([
