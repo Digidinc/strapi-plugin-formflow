@@ -118,6 +118,8 @@ npm run build
 npm run develop
 ```
 
+> **Testing a locally linked build:** after `yalc push`, stop the consuming Strapi app, remove its generated `.strapi/`, `node_modules/.strapi/`, `.cache/`, `.vite/`, `build/`, and `dist/` directories, then rebuild and restart. Otherwise Strapi or Vite may continue serving a stale admin bundle.
+
 ---
 
 ## Quick start
