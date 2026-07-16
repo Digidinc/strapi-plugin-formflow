@@ -118,6 +118,63 @@ test('rejects post-render rich-message length overflow without truncating', () =
   assert.equal(result.html, '');
 });
 
+test('rejects oversized hostile variables without emitting unescaped content', () => {
+  const result = renderTelegramTemplate(
+    document([{ type: 'paragraph', children: [{ type: 'formField', fieldId: 'email', fallback: '-' }] }]),
+    fields,
+    { email: `<script title="x">${'&'.repeat(20_001)}</script>` }
+  );
+  assert.equal(result.html, '');
+  assert.ok(result.errors.some((error) => error.code === 'variable_length' && error.path.includes('email')));
+});
+
+test('rejects unsupported runtime values without invoking coercion or getters', () => {
+  let invoked = 0;
+  class Hostile { toString(): string { invoked += 1; return '<b>bad</b>'; } }
+  const getter = Object.defineProperty({}, 'secret', { enumerable: true, get() { invoked += 1; return 'bad'; } });
+  const values: unknown[] = [() => 'bad', Symbol('bad'), new Date(), new Hostile(), getter];
+  for (const value of values) {
+    const result = renderTelegramTemplate(
+      document([{ type: 'paragraph', children: [{ type: 'formField', fieldId: 'email', fallback: '-' }] }]),
+      fields,
+      { email: value }
+    );
+    assert.equal(result.html, '');
+    assert.ok(result.errors.some((error) => error.code === 'unsupported_value'));
+  }
+  assert.equal(invoked, 0);
+});
+
+test('rejects lone surrogates in template text, code, URLs, and submitted values', () => {
+  const invalid = '\ud800';
+  const templates = [
+    document([{ type: 'paragraph', children: [{ type: 'text', text: invalid }] }]),
+    document([{ type: 'codeBlock', code: invalid }]),
+    document([{ type: 'paragraph', children: [{ type: 'link', url: `https://example.com/${invalid}`, children: [{ type: 'text', text: 'x' }] }] }]),
+  ];
+  for (const template of templates) {
+    assert.ok(validateTemplate(template, fields).errors.some((error) => error.code === 'invalid_unicode'));
+  }
+  const rendered = renderTelegramTemplate(
+    document([{ type: 'paragraph', children: [{ type: 'formField', fieldId: 'email', fallback: '-' }] }]),
+    fields,
+    { email: invalid }
+  );
+  assert.ok(rendered.errors.some((error) => error.code === 'invalid_unicode'));
+  assert.equal(rendered.html, '');
+});
+
+test('rejects structurally nonempty templates with no meaningful content', () => {
+  const meaningless = [
+    document([{ type: 'paragraph', children: [] }]),
+    document([{ type: 'paragraph', children: [{ type: 'text', text: '   ' }] }]),
+    document([{ type: 'blockquote', children: [{ type: 'paragraph', children: [] }] }]),
+  ];
+  for (const template of meaningless) {
+    assert.ok(validateTemplate(template, fields).errors.some((error) => error.code === 'empty_document'));
+  }
+});
+
 test('creates a title and current non-layout field rows in the default template', () => {
   const result = createDefaultTelegramTemplate({ title: '<Contact>', fields: [
     ...fields,
