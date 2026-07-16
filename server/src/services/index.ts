@@ -8,6 +8,7 @@ import license from './license';
 import analytics from './analytics';
 import telemetry from './telemetry';
 import premiumJobs from './premium-jobs';
+import telegram from './telegram';
 
 export default {
   form,
@@ -20,4 +21,5 @@ export default {
   analytics,
   telemetry,
   'premium-jobs': premiumJobs,
+  telegram,
 };
