@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import {
   API,
@@ -9,6 +10,8 @@ import {
   connectionLimitMessage,
   deletionReferenceWarning,
   resetTelegramCredentialDraft,
+  telegramConnectionMutationPolicy,
+  telegramValidationMatches,
 } from '../../utils/api';
 
 test('builds keep, replace, and switch update payloads without ambiguity', () => {
@@ -21,6 +24,27 @@ test('builds keep, replace, and switch update payloads without ambiguity', () =>
   assert.deepEqual(buildTelegramUpdateRequest('Primary', { mode: 'environment', variableName: 'TELEGRAM_TOKEN' }), {
     name: 'Primary', credential: { type: 'switch-to-environment', variableName: 'TELEGRAM_TOKEN' },
   });
+});
+
+test('enables save only for reviewed metadata matching the unchanged draft', () => {
+  const bot = { id: '1', displayName: 'Alerts' };
+  assert.equal(telegramValidationMatches('name|stored|secret|', 'name|stored|secret|', bot), true);
+  assert.equal(telegramValidationMatches('name|stored|secret|', 'renamed|stored|secret|', bot), false);
+  assert.equal(telegramValidationMatches('name|stored|secret|', 'name|environment||BOT_TOKEN', bot), false);
+  assert.equal(telegramValidationMatches('name|stored|secret|', 'name|stored|secret|', null), false);
+});
+
+test('keeps inactive excess connections deletable for recovery but not editable', () => {
+  assert.deepEqual(telegramConnectionMutationPolicy(false, true), { canEdit: false, canDelete: true });
+  assert.deepEqual(telegramConnectionMutationPolicy(true, true), { canEdit: true, canDelete: true });
+  assert.deepEqual(telegramConnectionMutationPolicy(false, false), { canEdit: false, canDelete: false });
+});
+
+test('settings route is outside the form-read guard while ordinary routes remain protected', () => {
+  const source = readFileSync('admin/src/pages/App.tsx', 'utf8');
+  assert.match(source, /<LicenseProvider>[\s\S]*path="settings"[\s\S]*permissions=\{PERMISSIONS\.settings\.read\}/);
+  assert.match(source, /path="\*"[\s\S]*permissions=\{PERMISSIONS\.main\}[\s\S]*<MainRoutes/);
+  assert.doesNotMatch(source, /<Page\.Protect permissions=\{PERMISSIONS\.main\}>\s*<LicenseProvider>/);
 });
 
 test('builds token-bearing create requests separately from safe responses', () => {

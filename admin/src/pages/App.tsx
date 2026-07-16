@@ -39,9 +39,26 @@ const AnalyticsRoute = () => {
 
 const App = () => {
   return (
-    <Page.Protect permissions={PERMISSIONS.main}>
-      <LicenseProvider>
-        <LicenseStatusNotice />
+    <LicenseProvider>
+      <LicenseStatusNotice />
+      <Routes>
+        <Route
+          path="settings"
+          element={
+            <Page.Protect permissions={PERMISSIONS.settings.read}>
+              <Suspense fallback={null}>
+                <SettingsPage />
+              </Suspense>
+            </Page.Protect>
+          }
+        />
+        <Route path="*" element={<Page.Protect permissions={PERMISSIONS.main}><MainRoutes /></Page.Protect>} />
+      </Routes>
+    </LicenseProvider>
+  );
+};
+
+const MainRoutes = () => (
         <Routes>
           {/* Forms */}
           <Route index element={<FormsListPage />} />
@@ -68,23 +85,9 @@ const App = () => {
             }
           />
 
-          <Route
-            path="settings"
-            element={
-              <Page.Protect permissions={PERMISSIONS.settings.read}>
-                <Suspense fallback={null}>
-                  <SettingsPage />
-                </Suspense>
-              </Page.Protect>
-            }
-          />
-
           {/* Fallback */}
           <Route path="*" element={<Page.Error />} />
         </Routes>
-      </LicenseProvider>
-    </Page.Protect>
-  );
-};
+);
 
 export { App };

@@ -129,6 +129,19 @@ export const connectionAvailability = (connection: Pick<TelegramConnectionRespon
   'connected' | 'disconnected' | 'environment-missing' =>
   !connection.credentialConfigured ? 'environment-missing' : connection.active ? 'connected' : 'disconnected';
 
+export const telegramConnectionMutationPolicy = (active: boolean, canUpdate: boolean) => ({
+  canEdit: active && canUpdate,
+  // Deletion remains available for inactive excess records so an administrator
+  // can recover to the licensed limit without first upgrading.
+  canDelete: canUpdate,
+});
+
+export const telegramValidationMatches = (
+  validatedFingerprint: string | null,
+  currentFingerprint: string,
+  bot: TelegramBotMetadataResponse | null
+): boolean => bot !== null && validatedFingerprint === currentFingerprint;
+
 /**
  * Resolve the admin JWT the same way `@strapi/admin`'s fetch client does:
  * primarily from localStorage (`jwtToken`), falling back to a cookie.
