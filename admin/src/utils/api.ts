@@ -29,6 +29,12 @@ export const API = {
   // Webhooks
   testWebhook: (formId: string) => `/${PLUGIN_ID}/forms/${formId}/webhooks/test`,
 
+  // Global Telegram connection settings (admin-only).
+  telegramConnections: `/${PLUGIN_ID}/settings/telegram/connections`,
+  telegramConnection: (id: string) => `/${PLUGIN_ID}/settings/telegram/connections/${id}`,
+  validateTelegramConnection: `/${PLUGIN_ID}/settings/telegram/connections/validate`,
+  testTelegramConnection: (formId: string) => `/${PLUGIN_ID}/forms/${formId}/telegram/test`,
+
   // Analytics (Pro). Server gates with a 402 when unentitled.
   formAnalytics: (formId: string) => `/${PLUGIN_ID}/forms/${formId}/analytics`,
 
@@ -43,6 +49,85 @@ export const API = {
   getPartialForm: (slug: string, resumeToken: string) =>
     `/api/${PLUGIN_ID}/forms/${slug}/partial/${resumeToken}`,
 } as const;
+
+export interface TelegramBotMetadataResponse {
+  id: string;
+  displayName: string;
+  username?: string;
+}
+
+/** Safe server response. It deliberately cannot contain a bot token. */
+export interface TelegramConnectionResponse {
+  id: string;
+  name: string;
+  tokenSource: { type: 'stored' } | { type: 'environment'; variableName: string };
+  credentialConfigured: boolean;
+  bot: TelegramBotMetadataResponse;
+  createdAt: string;
+  updatedAt: string;
+  active: boolean;
+  referenceCount: number;
+}
+
+export type TelegramCreateCredentialRequest =
+  | { type: 'stored'; token: string }
+  | { type: 'environment'; variableName: string };
+export type TelegramUpdateCredentialRequest =
+  | { type: 'keep' }
+  | { type: 'replace'; token: string }
+  | { type: 'switch-to-environment'; variableName: string };
+export interface TelegramCreateConnectionRequest {
+  name: string;
+  credential: TelegramCreateCredentialRequest;
+}
+export interface TelegramUpdateConnectionRequest {
+  name: string;
+  credential: TelegramUpdateCredentialRequest;
+}
+export interface TelegramCredentialDraft {
+  mode: 'keep' | 'replace' | 'stored' | 'environment';
+  token: string;
+  variableName: string;
+}
+
+type CreateDraft = { mode: 'stored'; token: string } | { mode: 'environment'; variableName: string };
+type UpdateDraft = { mode: 'keep' } | { mode: 'replace'; token: string } | { mode: 'environment'; variableName: string };
+
+export const buildTelegramCreateRequest = (name: string, draft: CreateDraft): TelegramCreateConnectionRequest => ({
+  name: name.trim(),
+  credential: draft.mode === 'stored'
+    ? { type: 'stored', token: draft.token.trim() }
+    : { type: 'environment', variableName: draft.variableName.trim() },
+});
+
+export const buildTelegramUpdateRequest = (name: string, draft: UpdateDraft): TelegramUpdateConnectionRequest => ({
+  name: name.trim(),
+  credential: draft.mode === 'keep'
+    ? { type: 'keep' }
+    : draft.mode === 'replace'
+      ? { type: 'replace', token: draft.token.trim() }
+      : { type: 'switch-to-environment', variableName: draft.variableName.trim() },
+});
+
+export const resetTelegramCredentialDraft = (): TelegramCredentialDraft => ({
+  mode: 'keep', token: '', variableName: '',
+});
+
+export const connectionLimitMessage = (used: number, limit: number | 'unlimited'): string =>
+  limit === 'unlimited'
+    ? `${used} connections configured.`
+    : used >= limit
+      ? `Connection limit reached (${used} of ${limit}).`
+      : `${used} of ${limit} connections used.`;
+
+export const deletionReferenceWarning = (count: number): string =>
+  count === 0
+    ? 'This connection is not referenced by any forms.'
+    : `This connection is used by ${count} ${count === 1 ? 'form' : 'forms'}. Deleting it will disconnect ${count === 1 ? 'that form' : 'those forms'}.`;
+
+export const connectionAvailability = (connection: Pick<TelegramConnectionResponse, 'active' | 'credentialConfigured'>):
+  'connected' | 'disconnected' | 'environment-missing' =>
+  !connection.credentialConfigured ? 'environment-missing' : connection.active ? 'connected' : 'disconnected';
 
 /**
  * Resolve the admin JWT the same way `@strapi/admin`'s fetch client does:
@@ -93,7 +178,7 @@ const withBackendUrl = (url: string): string => {
  * Options for {@link rawRequest}.
  */
 export interface RawRequestOptions {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   accept?: string;
   signal?: AbortSignal;

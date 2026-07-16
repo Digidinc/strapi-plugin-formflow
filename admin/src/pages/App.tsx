@@ -23,6 +23,10 @@ const CompliancePage = lazy(() =>
   import('../ee/pages/CompliancePage').then((m) => ({ default: m.CompliancePage }))
 );
 
+const SettingsPage = lazy(() =>
+  import('../ee/pages/SettingsPage').then((m) => ({ default: m.SettingsPage }))
+);
+
 /** Reads :formId from the URL and feeds it to the analytics page. */
 const AnalyticsRoute = () => {
   const { formId } = useParams<{ formId: string }>();
@@ -61,6 +65,17 @@ const App = () => {
               <Suspense fallback={null}>
                 <CompliancePage />
               </Suspense>
+            }
+          />
+
+          <Route
+            path="settings"
+            element={
+              <Page.Protect permissions={PERMISSIONS.settings.read}>
+                <Suspense fallback={null}>
+                  <SettingsPage />
+                </Suspense>
+              </Page.Protect>
             }
           />
 

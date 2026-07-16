@@ -1,4 +1,4 @@
-import { Shield } from '@strapi/icons';
+import { Cog, Shield } from '@strapi/icons';
 
 import { getTranslation } from './utils/getTranslation';
 import { PLUGIN_ID } from './pluginId';
@@ -25,6 +25,16 @@ export default {
 
         return App;
       },
+    });
+
+    app.addMenuLink({
+      to: `plugins/${PLUGIN_ID}/settings`,
+      icon: Cog,
+      intlLabel: {
+        id: getTranslation('settings.menu.label'),
+        defaultMessage: 'FormFlow Settings',
+      },
+      permissions: PERMISSIONS.settings.read,
     });
 
     // GDPR Compliance (Business). This is a menu-only link (no Component): the
