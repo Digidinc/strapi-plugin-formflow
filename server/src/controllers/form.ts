@@ -1,6 +1,6 @@
 import type { Core } from '@strapi/strapi';
 
-import type { FormField } from '../services/form';
+import { TelegramFormValidationError, type FormField } from '../services/form';
 import type { LicenseResolution } from '../services/license';
 import {
   hasDuplicateProvidedFieldIds,
@@ -315,6 +315,10 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
       ctx.status = 201;
       return { data: form };
     } catch (error) {
+      if (error instanceof TelegramFormValidationError) {
+        ctx.status = error.validation.status;
+        return { error: { status: error.validation.status, name: error.validation.status === 402 ? 'PaymentRequired' : 'ValidationError', message: error.validation.message, details: error.validation.details ?? {} } };
+      }
       strapi.log.error('Error creating form:', error);
       ctx.throw(500, error);
     }
@@ -382,6 +386,10 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
 
       return { data: form };
     } catch (error) {
+      if (error instanceof TelegramFormValidationError) {
+        ctx.status = error.validation.status;
+        return { error: { status: error.validation.status, name: error.validation.status === 402 ? 'PaymentRequired' : 'ValidationError', message: error.validation.message, details: error.validation.details ?? {} } };
+      }
       strapi.log.error(`Error updating form ${id}:`, error);
       ctx.throw(500, error);
     }

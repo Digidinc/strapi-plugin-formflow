@@ -49,6 +49,11 @@ export const SUBMISSION_PERMISSIONS = {
   export: [buildPermission('plugin::formflow.submission.export')],
 } satisfies Record<string, Permission[]>;
 
+export const SETTINGS_PERMISSIONS = {
+  read: [buildPermission('plugin::formflow.settings.read')],
+  update: [buildPermission('plugin::formflow.settings.update')],
+} satisfies Record<string, Permission[]>;
+
 /**
  * Top-level permission groups. `main` gates the menu link and the protected app
  * shell (form read); `form` / `submission` expose the per-action groups for
@@ -58,9 +63,11 @@ export const PERMISSIONS: {
   main: Permission[];
   form: typeof FORM_PERMISSIONS;
   submission: typeof SUBMISSION_PERMISSIONS;
+  settings: typeof SETTINGS_PERMISSIONS;
 } = {
   // Menu/app access requires form read (the landing page lists forms).
   main: FORM_PERMISSIONS.main,
   form: FORM_PERMISSIONS,
   submission: SUBMISSION_PERMISSIONS,
+  settings: SETTINGS_PERMISSIONS,
 };

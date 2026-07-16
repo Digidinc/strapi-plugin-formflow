@@ -102,6 +102,67 @@ export interface FormSettings {
    * unaffected.
    */
   customCss?: string;
+  telegram?: {
+    enabled: boolean;
+    connectionId: string;
+    destination: string;
+    template: unknown;
+  };
+}
+
+export interface TelegramFormSettingsError {
+  status: 400 | 402;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+const record = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Validate only an enabled integration; disabling remains monotonic after license loss. */
+export async function validateTelegramFormSettings(
+  strapi: Core.Strapi,
+  fields: readonly Partial<FormField>[],
+  settings: unknown
+): Promise<TelegramFormSettingsError | null> {
+  if (!record(settings) || !Object.prototype.hasOwnProperty.call(settings, 'telegram')) return null;
+  const telegram = settings.telegram;
+  if (!record(telegram) || typeof telegram.enabled !== 'boolean') {
+    return { status: 400, message: 'Telegram settings are invalid.' };
+  }
+  if (telegram.enabled === false) return null;
+  if (!Object.keys(telegram).every((key) => ['enabled', 'connectionId', 'destination', 'template'].includes(key)) ||
+    typeof telegram.connectionId !== 'string' || telegram.connectionId.length === 0 ||
+    typeof telegram.destination !== 'string' ||
+    (!/^-?[1-9]\d{0,19}$/.test(telegram.destination) && !/^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(telegram.destination)) ||
+    !record(telegram.template)) {
+    return { status: 400, message: 'Telegram connection, destination, or template is invalid.' };
+  }
+  const license = strapi.plugin('formflow').service('license');
+  if (license.can('integrations') !== true) {
+    return { status: 402, message: 'Upgrade to Pro to use feature: integrations', details: { feature: 'integrations', requiredTier: 'pro', resolution: license.resolution?.() ?? 'unresolved' } };
+  }
+  const { validateTemplate } = await import('../ee/telegram/template');
+  const templateResult = validateTemplate(telegram.template as any, fields.map((field) => ({
+    id: field.id ?? '', type: field.type ?? '', name: field.name, label: field.label ?? field.name ?? 'Field',
+  })));
+  if (!templateResult.valid) return { status: 400, message: 'Telegram template is invalid.', details: { errors: templateResult.errors, warnings: templateResult.warnings } };
+  const connections = await strapi.plugin('formflow').service('telegram').listConnections() as Array<{ id?: unknown; active?: unknown }>;
+  const connection = connections.find((item) => item.id === telegram.connectionId);
+  if (!connection) return { status: 400, message: 'The selected Telegram connection does not exist.' };
+  if (connection.active !== true) return {
+    status: 402,
+    message: 'The selected Telegram connection is inactive on the current plan.',
+    details: {
+      feature: 'integrations', requiredTier: 'pro', resolution: license.resolution?.() ?? 'unresolved',
+      upgradeUrl: 'https://hrahimi270.github.io/formflow/#pricing',
+    },
+  };
+  return null;
+}
+
+export class TelegramFormValidationError extends Error {
+  constructor(public readonly validation: TelegramFormSettingsError) { super(validation.message); }
 }
 
 /**
@@ -207,15 +268,16 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
         }))
       : [];
 
+    const mergedSettings = { ...this.getDefaultSettings(), ...data.settings };
+    const telegramError = await validateTelegramFormSettings(strapi, processedFields, mergedSettings);
+    if (telegramError) throw new TelegramFormValidationError(telegramError);
+
     return strapi.documents(CONTENT_TYPE_UID).create({
       status: 'published',
       data: {
         ...data,
         fields: processedFields,
-        settings: {
-          ...this.getDefaultSettings(),
-          ...data.settings,
-        },
+        settings: mergedSettings,
       },
     });
   },
@@ -247,6 +309,15 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
         id: field.id || uuidv4(),
         order: field.order ?? index,
       }));
+    }
+
+    if (data.fields || (data.settings && Object.prototype.hasOwnProperty.call(data.settings, 'telegram'))) {
+      const existing = await this.findOne(documentId) as { fields?: Partial<FormField>[]; settings?: Record<string, unknown> } | null;
+      const fields = (processedData.fields ?? existing?.fields ?? []) as Partial<FormField>[];
+      const settings = { ...(existing?.settings ?? {}), ...data.settings };
+      const telegramError = await validateTelegramFormSettings(strapi, fields, settings);
+      if (telegramError) throw new TelegramFormValidationError(telegramError);
+      processedData.settings = settings;
     }
 
     return strapi.documents(CONTENT_TYPE_UID).update({

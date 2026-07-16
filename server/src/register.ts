@@ -14,6 +14,18 @@ import type { Core } from '@strapi/strapi';
 export const RBAC_ACTIONS = [
   {
     section: 'plugins',
+    displayName: 'Read integration settings',
+    uid: 'settings.read',
+    pluginName: 'formflow',
+  },
+  {
+    section: 'plugins',
+    displayName: 'Update integration settings',
+    uid: 'settings.update',
+    pluginName: 'formflow',
+  },
+  {
+    section: 'plugins',
     displayName: 'Read forms',
     uid: 'form.read',
     pluginName: 'formflow',
