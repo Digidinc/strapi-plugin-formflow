@@ -12,6 +12,7 @@ import {
   resetTelegramCredentialDraft,
   telegramConnectionMutationPolicy,
   telegramValidationMatches,
+  telegramDraftCanSave,
 } from '../../utils/api';
 
 test('builds keep, replace, and switch update payloads without ambiguity', () => {
@@ -32,6 +33,17 @@ test('enables save only for reviewed metadata matching the unchanged draft', () 
   assert.equal(telegramValidationMatches('name|stored|secret|', 'renamed|stored|secret|', bot), false);
   assert.equal(telegramValidationMatches('name|stored|secret|', 'name|environment||BOT_TOKEN', bot), false);
   assert.equal(telegramValidationMatches('name|stored|secret|', 'name|stored|secret|', null), false);
+});
+
+test('keeps rename and mode round-trip saveable with an explicit keep payload', () => {
+  const existingBot = { id: '1', displayName: 'Alerts' };
+  assert.equal(telegramDraftCanSave('keep', null, 'Renamed|keep||', null, existingBot), true);
+  assert.equal(telegramDraftCanSave('replace', null, 'Renamed|replace|new|', null, existingBot), false);
+  // Returning from replace to keep uses safe existing metadata, never a token.
+  assert.equal(telegramDraftCanSave('keep', null, 'Renamed|keep||', null, existingBot), true);
+  assert.deepEqual(buildTelegramUpdateRequest('Renamed', { mode: 'keep' }), {
+    name: 'Renamed', credential: { type: 'keep' },
+  });
 });
 
 test('keeps inactive excess connections deletable for recovery but not editable', () => {

@@ -12,7 +12,7 @@ import { SETTINGS_PERMISSIONS } from '../../permissions';
 import { getTranslation } from '../../utils/getTranslation';
 import {
   API, buildTelegramCreateRequest, buildTelegramUpdateRequest, connectionAvailability,
-  resetTelegramCredentialDraft, telegramConnectionMutationPolicy, telegramValidationMatches,
+  resetTelegramCredentialDraft, telegramConnectionMutationPolicy, telegramDraftCanSave,
   rawRequest,
   type TelegramBotMetadataResponse, type TelegramConnectionResponse,
   type TelegramCreateCredentialRequest, type TelegramCredentialDraft,
@@ -25,7 +25,7 @@ import { UpsellCard } from './UpsellCard';
 
 type Editor = { kind: 'create' } | { kind: 'edit'; connection: TelegramConnectionResponse };
 
-const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong';
+const messageOf = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 export const TelegramConnectionsSettings = () => {
   const { formatMessage } = useIntl();
@@ -50,7 +50,7 @@ export const TelegramConnectionsSettings = () => {
       ]);
       setConnections(connectionResult.data.data);
       setLimit(parseLicenseSnapshot(licenseResult.data).limits.telegramConnections);
-    } catch (cause) { setError(messageOf(cause)); }
+    } catch (cause) { setError(messageOf(cause, formatMessage({ id: getTranslation('common.error'), defaultMessage: 'Something went wrong' }))); }
     finally { setLoading(false); }
   }, [get]);
 
@@ -63,7 +63,7 @@ export const TelegramConnectionsSettings = () => {
       setDeleting(null);
       await load();
       toggleNotification({ type: 'success', message: formatMessage({ id: getTranslation('settings.telegram.deleted'), defaultMessage: 'Telegram connection deleted.' }) });
-    } catch (cause) { toggleNotification({ type: 'danger', message: messageOf(cause) }); }
+    } catch (cause) { toggleNotification({ type: 'danger', message: messageOf(cause, formatMessage({ id: getTranslation('common.error'), defaultMessage: 'Something went wrong' })) }); }
   };
 
   if (integrationAccess === 'checking' || integrationAccess === 'unavailable') return <LicenseStatusNotice compact />;
@@ -137,7 +137,9 @@ const ConnectionDialog = ({ editor, onClose, onSaved }: { editor: Editor | null;
     : draft.mode === 'environment' ? { type: 'environment', variableName: draft.variableName.trim() } : null;
   const valid = name.trim() !== '' && (draft.mode === 'keep' || (draft.mode === 'environment' ? draft.variableName.trim() !== '' : draft.token.trim() !== ''));
   const fingerprint = `${name.trim()}|${draft.mode}|${draft.token.trim()}|${draft.variableName.trim()}`;
-  const isValidated = telegramValidationMatches(validatedFingerprint, fingerprint, validatedBot);
+  const existingBot = editor?.kind === 'edit' ? editor.connection.bot : null;
+  const reviewedBot = draft.mode === 'keep' ? existingBot : validatedBot;
+  const isValidated = telegramDraftCanSave(draft.mode, validatedFingerprint, fingerprint, validatedBot, existingBot);
 
   const invalidate = () => { setValidatedBot(null); setValidatedFingerprint(null); };
 
@@ -148,7 +150,7 @@ const ConnectionDialog = ({ editor, onClose, onSaved }: { editor: Editor | null;
     try {
       const checked = await post<{ data: TelegramBotMetadataResponse }>(API.validateTelegramConnection, { credential: candidate });
       setValidatedBot(checked.data.data); setValidatedFingerprint(fingerprint);
-    } catch (cause) { toggleNotification({ type: 'danger', message: messageOf(cause) }); }
+    } catch (cause) { toggleNotification({ type: 'danger', message: messageOf(cause, formatMessage({ id: getTranslation('common.error'), defaultMessage: 'Something went wrong' })) }); }
     finally { setSaving(false); }
   };
 
@@ -164,7 +166,7 @@ const ConnectionDialog = ({ editor, onClose, onSaved }: { editor: Editor | null;
       setDraft(resetTelegramCredentialDraft());
       toggleNotification({ type: 'success', message: formatMessage({ id: getTranslation('settings.telegram.saved'), defaultMessage: 'Telegram connection saved.' }) });
       await onSaved();
-    } catch (cause) { toggleNotification({ type: 'danger', message: messageOf(cause) }); }
+    } catch (cause) { toggleNotification({ type: 'danger', message: messageOf(cause, formatMessage({ id: getTranslation('common.error'), defaultMessage: 'Something went wrong' })) }); }
     finally { setSaving(false); }
   };
 
@@ -176,7 +178,7 @@ const ConnectionDialog = ({ editor, onClose, onSaved }: { editor: Editor | null;
       <SingleSelectOption value="environment">{formatMessage({ id: getTranslation('settings.telegram.action.environment'), defaultMessage: 'Use environment variable' })}</SingleSelectOption>
     </SingleSelect></Field.Root>
     {draft.mode === 'stored' || draft.mode === 'replace' ? <Field.Root required><Field.Label>{formatMessage({ id: getTranslation('settings.telegram.field.token'), defaultMessage: 'Bot token' })}</Field.Label><TextInput type="password" autoComplete="new-password" value={draft.token} onChange={(event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, token: event.target.value }); invalidate(); }} /><Field.Hint>{formatMessage({ id: getTranslation('settings.telegram.field.token.hint'), defaultMessage: 'The existing token is never displayed. Validate the new token before saving.' })}</Field.Hint></Field.Root> : null}
-    {draft.mode === 'environment' ? <Field.Root required><Field.Label>{formatMessage({ id: getTranslation('settings.telegram.field.environment'), defaultMessage: 'Environment variable' })}</Field.Label><TextInput value={draft.variableName} placeholder="TELEGRAM_BOT_TOKEN" onChange={(event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, variableName: event.target.value.toUpperCase() }); invalidate(); }} /></Field.Root> : null}
-    {validatedBot ? <Alert variant="success" title={formatMessage({ id: getTranslation('settings.telegram.validated'), defaultMessage: 'Bot validated' })}>{validatedBot.displayName}{validatedBot.username ? ` (@${validatedBot.username})` : ''}</Alert> : null}
+    {draft.mode === 'environment' ? <Field.Root required><Field.Label>{formatMessage({ id: getTranslation('settings.telegram.field.environment'), defaultMessage: 'Environment variable' })}</Field.Label><TextInput value={draft.variableName} placeholder={formatMessage({ id: getTranslation('settings.telegram.field.environment.placeholder'), defaultMessage: 'TELEGRAM_BOT_TOKEN' })} onChange={(event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, variableName: event.target.value.toUpperCase() }); invalidate(); }} /></Field.Root> : null}
+    {reviewedBot ? <Alert variant="success" title={formatMessage({ id: getTranslation('settings.telegram.validated'), defaultMessage: 'Bot validated' })}>{reviewedBot.displayName}{reviewedBot.username ? ` (@${reviewedBot.username})` : ''}</Alert> : null}
   </Flex></Dialog.Body><Dialog.Footer><Dialog.Cancel><Button variant="tertiary">{formatMessage({ id: getTranslation('common.cancel'), defaultMessage: 'Cancel' })}</Button></Dialog.Cancel>{draft.mode !== 'keep' ? <Button variant="secondary" loading={saving} disabled={!valid} onClick={validate}>{formatMessage({ id: getTranslation('settings.telegram.validate'), defaultMessage: 'Validate' })}</Button> : null}<Button loading={saving} disabled={!isValidated} onClick={save}>{formatMessage({ id: getTranslation('common.save'), defaultMessage: 'Save' })}</Button></Dialog.Footer></Dialog.Content></Dialog.Root>;
 };

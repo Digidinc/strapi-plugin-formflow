@@ -633,6 +633,7 @@
   "formflow.settings.telegram.field.token": "Bot token",
   "formflow.settings.telegram.field.token.hint": "The existing token is never displayed. Validate the new token before saving.",
   "formflow.settings.telegram.field.environment": "Environment variable",
+  "formflow.settings.telegram.field.environment.placeholder": "TELEGRAM_BOT_TOKEN",
   "formflow.settings.telegram.validated": "Bot validated",
   "formflow.settings.telegram.validate": "Validate"
 }
