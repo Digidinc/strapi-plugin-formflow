@@ -94,22 +94,39 @@ const telegramController = ({ strapi }: { strapi: Core.Strapi }) => {
       const gate = gated(ctx); if (gate) return gate;
       if (!ctx.params.formId || !testInput(ctx.request.body)) return invalid(ctx, 'Connection, destination, and template are required.');
       const body = ctx.request.body;
-      const form = await strapi.plugin('formflow').service('form').findOne(ctx.params.formId);
-      if (!form) return ctx.notFound('Form not found');
-      const fields = Array.isArray(form.fields) ? form.fields.filter(isRecord) : [];
-      const { validateTemplate, renderTelegramTemplate } = await import('../ee/telegram/template');
-      const checked = validateTemplate(body.template as any, fields as any);
-      if (!checked.valid) return invalid(ctx, 'Telegram template is invalid.', { errors: checked.errors, warnings: checked.warnings });
-      const connections = await service().listConnections() as Array<{ id?: unknown; active?: unknown }>;
-      if (!connections.some((item) => item.id === body.connectionId && item.active === true)) return invalid(ctx, 'Select an active Telegram connection.');
-      const samples = Object.fromEntries(fields.filter((field) => typeof field.name === 'string').map((field) => [field.name as string, sampleFor(field)]));
-      const rendered = renderTelegramTemplate(body.template as any, fields as any, samples);
-      if (rendered.errors.length) return invalid(ctx, 'Telegram template could not be rendered.', { errors: rendered.errors });
-      const result = await service().sendRichNotification({ connectionId: body.connectionId, destination: body.destination, html: rendered.html }) as any;
-      if (result?.ok) return { data: { success: true, warnings: checked.warnings } };
-      const messages: Record<string, string> = { authentication: 'The bot credential is invalid.', destination: 'Telegram could not find that destination.', permission: 'The bot cannot post to that destination.', rate_limit: 'Telegram rate limited the request. Try again later.', telegram_server: 'Telegram is temporarily unavailable.', network: 'Telegram could not be reached.', timeout: 'Telegram did not respond in time.', configuration: 'The Telegram connection is not configured correctly.', template: 'The Telegram template is invalid.', unknown: 'Telegram could not send the test message.' };
-      ctx.status = 400;
-      return errorBody(400, 'TelegramDeliveryError', messages[result?.failure] ?? messages.unknown, { failure: result?.failure ?? 'unknown' });
+      let stage: 'form' | 'connections' | 'render' | 'delivery' = 'form';
+      try {
+        const form = await strapi.plugin('formflow').service('form').findOne(ctx.params.formId);
+        if (!form) return ctx.notFound('Form not found');
+        const fields = Array.isArray(form.fields) ? form.fields.filter(isRecord) : [];
+        stage = 'render';
+        const { validateTemplate, renderTelegramTemplate } = await import('../ee/telegram/template');
+        const checked = validateTemplate(body.template as any, fields as any);
+        if (!checked.valid) return invalid(ctx, 'Telegram template is invalid.', { errors: checked.errors, warnings: checked.warnings });
+        stage = 'connections';
+        const connections = await service().listConnections() as Array<{ id?: unknown; active?: unknown }>;
+        if (!connections.some((item) => item.id === body.connectionId && item.active === true)) return invalid(ctx, 'Select an active Telegram connection.');
+        stage = 'render';
+        const samples = Object.fromEntries(fields.filter((field) => typeof field.id === 'string').map((field) => [field.id as string, sampleFor(field)]));
+        const rendered = renderTelegramTemplate(body.template as any, fields as any, samples);
+        if (rendered.errors.length) return invalid(ctx, 'Telegram template could not be rendered.', { errors: rendered.errors });
+        stage = 'delivery';
+        const result = await service().sendRichNotification({ connectionId: body.connectionId, destination: body.destination, html: rendered.html }) as any;
+        if (result?.ok) return { data: { success: true, warnings: checked.warnings } };
+        const messages: Record<string, string> = { authentication: 'The bot credential is invalid.', destination: 'Telegram could not find that destination.', permission: 'The bot cannot post to that destination.', rate_limit: 'Telegram rate limited the request. Try again later.', telegram_server: 'Telegram is temporarily unavailable.', network: 'Telegram could not be reached.', timeout: 'Telegram did not respond in time.', configuration: 'The Telegram connection is not configured correctly.', template: 'The Telegram template is invalid.', unknown: 'Telegram could not send the test message.' };
+        ctx.status = 400;
+        return errorBody(400, 'TelegramDeliveryError', messages[result?.failure] ?? messages.unknown, { failure: result?.failure ?? 'unknown' });
+      } catch {
+        strapi.log.error('Telegram test message failed', { stage });
+        ctx.status = 500;
+        const messages = {
+          form: 'The form configuration could not be loaded. Try again.',
+          connections: 'Telegram connections could not be loaded. Check the plugin configuration and try again.',
+          render: 'The Telegram test message could not be prepared. Check the template and try again.',
+          delivery: 'The Telegram test message could not be sent. Check the connection and try again.',
+        };
+        return errorBody(500, 'ApplicationError', messages[stage]);
+      }
     },
   };
 };

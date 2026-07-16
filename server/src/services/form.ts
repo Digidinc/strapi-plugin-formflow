@@ -314,7 +314,19 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
     if (data.fields || (data.settings && Object.prototype.hasOwnProperty.call(data.settings, 'telegram'))) {
       const existing = await this.findOne(documentId) as { fields?: Partial<FormField>[]; settings?: Record<string, unknown> } | null;
       const fields = (processedData.fields ?? existing?.fields ?? []) as Partial<FormField>[];
-      const settings = { ...(existing?.settings ?? {}), ...data.settings };
+      const existingSettings = existing?.settings ?? {};
+      const settings = {
+        ...existingSettings,
+        ...data.settings,
+        ...(data.settings && Object.prototype.hasOwnProperty.call(data.settings, 'telegram')
+          ? {
+              telegram: {
+                ...(record(existingSettings.telegram) ? existingSettings.telegram : {}),
+                ...(record(data.settings.telegram) ? data.settings.telegram : {}),
+              },
+            }
+          : {}),
+      };
       const telegramError = await validateTelegramFormSettings(strapi, fields, settings);
       if (telegramError) throw new TelegramFormValidationError(telegramError);
       processedData.settings = settings;
