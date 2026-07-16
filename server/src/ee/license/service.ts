@@ -4,7 +4,15 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import type { Core } from '@strapi/strapi';
 
-import { FEATURE_TIER, TIER_RANK, type FeatureKey, type Tier } from '../feature-map';
+import {
+  FEATURE_TIER,
+  TIER_RANK,
+  limitForTier,
+  type EntitlementLimit,
+  type FeatureKey,
+  type LimitKey,
+  type Tier,
+} from '../feature-map';
 import * as morClient from './mor-client';
 
 const PLUGIN_CONFIG_ID = 'plugin::formflow';
@@ -53,6 +61,7 @@ export interface LicenseSnapshot {
   resolution: LicenseResolution;
   graceUntil: Date | null;
   features: Record<FeatureKey, boolean>;
+  limits: Record<LimitKey, EntitlementLimit>;
 }
 
 export interface LicenseService {
@@ -65,6 +74,7 @@ export interface LicenseService {
   tier(): Tier;
   state(): LicenseState;
   can(feature: FeatureKey): boolean;
+  limit(key: LimitKey): EntitlementLimit;
   snapshot(): LicenseSnapshot;
 }
 
@@ -138,6 +148,10 @@ export function createLicenseService(
       return false;
     }
     return TIER_RANK[_tier] >= TIER_RANK[FEATURE_TIER[feature]];
+  }
+
+  function limit(key: LimitKey): EntitlementLimit {
+    return limitForTier(effectiveState().tier, key);
   }
 
   /**
@@ -473,6 +487,7 @@ export function createLicenseService(
       features: Object.fromEntries(
         (Object.keys(FEATURE_TIER) as FeatureKey[]).map((f) => [f, can(f)])
       ) as Record<FeatureKey, boolean>,
+      limits: { telegramConnections: limit('telegramConnections') },
     };
   }
 
@@ -486,6 +501,7 @@ export function createLicenseService(
     tier: () => effectiveState().tier,
     state: () => effectiveState().state,
     can,
+    limit,
     snapshot,
   };
 }

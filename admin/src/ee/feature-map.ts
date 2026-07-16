@@ -2,10 +2,13 @@
 
 import type {
   FeatureKey as ServerFeatureKey,
+  LimitKey as ServerLimitKey,
   Tier as ServerTier,
 } from '../../../server/src/ee/feature-map';
 
 export type Tier = 'free' | 'pro' | 'business';
+export type LimitKey = 'telegramConnections';
+export type EntitlementLimit = number | 'unlimited';
 
 export type FeatureKey =
   // Pro — webhooks
@@ -110,7 +113,14 @@ type _AssertFeatureKey = ServerFeatureKey extends FeatureKey
     : never
   : never;
 type _AssertTier = ServerTier extends Tier ? (Tier extends ServerTier ? true : never) : never;
+type _AssertLimitKey = ServerLimitKey extends LimitKey
+  ? LimitKey extends ServerLimitKey
+    ? true
+    : never
+  : never;
 const _assertFeatureKey: _AssertFeatureKey = true;
 const _assertTier: _AssertTier = true;
+const _assertLimitKey: _AssertLimitKey = true;
 void _assertFeatureKey;
 void _assertTier;
+void _assertLimitKey;

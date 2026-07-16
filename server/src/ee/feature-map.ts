@@ -1,6 +1,18 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 
 export type Tier = 'free' | 'pro' | 'business';
+export type LimitKey = 'telegramConnections';
+export type EntitlementLimit = number | 'unlimited';
+
+export const TIER_LIMITS: Record<Tier, Record<LimitKey, EntitlementLimit>> = {
+  free: { telegramConnections: 0 },
+  pro: { telegramConnections: 1 },
+  business: { telegramConnections: 3 },
+};
+
+export function limitForTier(tier: Tier, key: LimitKey): EntitlementLimit {
+  return TIER_LIMITS[tier][key];
+}
 
 export type FeatureKey =
   // Pro — webhooks

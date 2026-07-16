@@ -116,6 +116,8 @@ void (async () => {
     await fresh.whenReady();
     assert.equal(fresh.snapshot().resolution, 'resolved');
     assert.equal(fresh.snapshot().tier, 'pro');
+    assert.equal(fresh.snapshot().limits.telegramConnections, 1);
+    assert.equal(fresh.limit('telegramConnections'), 1);
     assert.equal(fresh.can('conditionalLogic'), true);
     assert.equal(JSON.stringify(fresh.snapshot()).includes(freshKey), false);
 

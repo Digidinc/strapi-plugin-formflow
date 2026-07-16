@@ -9,6 +9,8 @@ export type LicenseResolution = 'checking' | 'resolved' | 'unavailable';
 
 /** Effective entitlement tier (collapsed to `free` when expired). */
 export type LicenseTier = 'free' | 'pro' | 'business';
+export type LimitKey = 'telegramConnections';
+export type EntitlementLimit = number | 'unlimited';
 
 /**
  * JSON-safe license snapshot for the admin `/license` route. Distinct from the
@@ -21,6 +23,7 @@ export interface LicenseSnapshot {
   resolution: LicenseResolution;
   graceUntil: string | null;
   features: Record<string, boolean>;
+  limits: Record<LimitKey, EntitlementLimit>;
 }
 
 export interface LicenseService {
@@ -31,6 +34,7 @@ export interface LicenseService {
   whenReady(): Promise<void>;
   resolution(): LicenseResolution;
   can(feature: string): boolean;
+  limit(key: LimitKey): EntitlementLimit;
   tier(): LicenseTier;
   state(): LicenseState;
   snapshot(): LicenseSnapshot;
@@ -49,6 +53,7 @@ interface EeLicenseInstance {
   whenReady(): Promise<void>;
   resolution(): LicenseResolution;
   can(feature: string): boolean;
+  limit(key: LimitKey): EntitlementLimit;
   tier(): LicenseTier;
   state(): LicenseState;
   snapshot(): {
@@ -57,6 +62,7 @@ interface EeLicenseInstance {
     resolution: LicenseResolution;
     graceUntil: Date | null;
     features: Record<string, boolean>;
+    limits: Record<LimitKey, EntitlementLimit>;
   };
 }
 
@@ -66,6 +72,7 @@ const FREE_SNAPSHOT: LicenseSnapshot = {
   resolution: 'resolved',
   graceUntil: null,
   features: {},
+  limits: { telegramConnections: 0 },
 };
 
 /**
@@ -122,6 +129,10 @@ const licenseService = ({ strapi }: { strapi: Core.Strapi }): LicenseService => 
       return eeImpl ? eeImpl.can(feature) : false;
     },
 
+    limit(key: LimitKey): EntitlementLimit {
+      return eeImpl ? eeImpl.limit(key) : 0;
+    },
+
     tier(): LicenseTier {
       return eeImpl ? eeImpl.tier() : 'free';
     },
@@ -140,6 +151,7 @@ const licenseService = ({ strapi }: { strapi: Core.Strapi }): LicenseService => 
         graceUntil:
           snap.graceUntil instanceof Date ? snap.graceUntil.toISOString() : snap.graceUntil,
         features: snap.features,
+        limits: snap.limits,
       };
     },
   };

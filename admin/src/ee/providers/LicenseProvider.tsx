@@ -144,6 +144,7 @@ const LicenseProvider = ({ children }: { children: React.ReactNode }) => {
             resolution,
             graceUntil: null,
             features: {},
+            limits: { telegramConnections: 0 },
           }
         : null;
   const access: LicenseContextValue['access'] = (feature) => featureAccess(accessSnapshot, feature);

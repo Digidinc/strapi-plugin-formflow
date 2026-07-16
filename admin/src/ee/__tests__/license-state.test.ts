@@ -24,6 +24,7 @@ const snapshot = (overrides: Partial<LicenseSnapshot>): LicenseSnapshot => ({
   resolution: 'resolved',
   graceUntil: null,
   features: {},
+  limits: { telegramConnections: 0 },
   ...overrides,
 });
 
@@ -34,6 +35,7 @@ const proSnapshot = snapshot({
   tier: 'pro',
   state: 'active',
   features: { conditionalLogic: true },
+  limits: { telegramConnections: 1 },
 });
 const businessSnapshot = snapshot({
   tier: 'business',
@@ -88,6 +90,17 @@ assert.equal(reconcileDismissedNotice(firstGraceNotice, nextGraceNotice), null);
 assert.equal(reconcileDismissedNotice(unavailableNotice, null), null);
 
 assert.throws(() => parseLicenseSnapshot({ tier: 'pro' }));
+assert.equal(
+  parseLicenseSnapshot({
+    tier: 'business',
+    state: 'active',
+    resolution: 'resolved',
+    graceUntil: null,
+    features: { integrations: true },
+    limits: { telegramConnections: 3 },
+  }).limits.telegramConnections,
+  3
+);
 assert.deepEqual([0, 1, 2, 3, 20].map(retryDelay), [250, 500, 1000, 1000, 1000]);
 
 const refreshStartResolution = (

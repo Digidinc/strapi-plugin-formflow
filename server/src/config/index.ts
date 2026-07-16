@@ -42,6 +42,10 @@ export interface FormFlowConfig {
      */
     key: string;
   };
+  telegram: {
+    /** Base64-encoded 32-byte key used only to encrypt stored bot tokens. */
+    encryptionKey: string;
+  };
 }
 
 export default {
@@ -60,6 +64,9 @@ export default {
     license: {
       key: process.env.FORMFLOW_LICENSE_KEY ?? '',
     },
+    telegram: {
+      encryptionKey: process.env.FORMFLOW_ENCRYPTION_KEY ?? '',
+    },
   },
   /**
    * Validate the privacy options if an administrator supplied them. Kept lenient
@@ -67,22 +74,13 @@ export default {
    * keys continue to load with the defaults above.
    */
   validator(config: Partial<FormFlowConfig> = {}) {
-    if (
-      config.anonymizeIp !== undefined &&
-      typeof config.anonymizeIp !== 'boolean'
-    ) {
-      throw new Error(
-        '[FormFlow] config "anonymizeIp" must be a boolean.'
-      );
+    if (config.anonymizeIp !== undefined && typeof config.anonymizeIp !== 'boolean') {
+      throw new Error('[FormFlow] config "anonymizeIp" must be a boolean.');
     }
 
     if (config.dataRetentionDays !== undefined) {
       const days = config.dataRetentionDays;
-      if (
-        typeof days !== 'number' ||
-        !Number.isInteger(days) ||
-        days < 0
-      ) {
+      if (typeof days !== 'number' || !Number.isInteger(days) || days < 0) {
         throw new Error(
           '[FormFlow] config "dataRetentionDays" must be a non-negative integer (0 disables auto-deletion).'
         );
@@ -90,11 +88,23 @@ export default {
     }
 
     if (config.license !== undefined) {
-      if (
-        config.license.key !== undefined &&
-        typeof config.license.key !== 'string'
-      ) {
+      if (config.license.key !== undefined && typeof config.license.key !== 'string') {
         throw new Error('[FormFlow] config "license.key" must be a string.');
+      }
+    }
+
+    if (config.telegram !== undefined) {
+      const key = config.telegram.encryptionKey;
+      if (key !== undefined && typeof key !== 'string') {
+        throw new Error('[FormFlow] config "telegram.encryptionKey" must be a string.');
+      }
+      if (key) {
+        const decoded = Buffer.from(key, 'base64');
+        if (decoded.length !== 32 || decoded.toString('base64') !== key) {
+          throw new Error(
+            '[FormFlow] config "telegram.encryptionKey" must be base64 encoding exactly 32 bytes.'
+          );
+        }
       }
     }
   },
