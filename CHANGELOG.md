@@ -1,5 +1,12 @@
 # @formflowjs/strapi-plugin-formflow
 
+## 1.1.1
+
+### Patch Changes
+
+- 848a808: Allow additional time for the initial Lemon Squeezy activation request while retaining the shorter validation timeout.
+- 25c173e: Add a public, license-independent endpoint for headless renderers to record a form start without affecting form interaction.
+
 ## 1.1.0
 
 ### Minor Changes
