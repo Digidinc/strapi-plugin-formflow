@@ -240,7 +240,39 @@ export function validateTemplate(
 
 type FormattedValue = { ok: true; value: string } | { ok: false; message: string };
 
+function validateRuntimeValue(value: unknown, depth = 0, budget = { nodes: 0 }): string | undefined {
+  budget.nodes += 1;
+  if (budget.nodes > MAX_NODES || depth > MAX_DEPTH) return 'Submitted value exceeds structural bounds.';
+  if (value === null || value === undefined || ['string', 'boolean', 'bigint'].includes(typeof value)) return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? undefined : 'Submitted number must be finite.';
+  if (Array.isArray(value)) {
+    const count = Math.min(value.length, MAX_COLLECTION_ITEMS);
+    for (let index = 0; index < count; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, `${index}`);
+      if (!descriptor || !('value' in descriptor)) return 'Submitted arrays may not contain accessors or sparse entries.';
+      const error = validateRuntimeValue(descriptor.value, depth + 1, budget);
+      if (error) return error;
+    }
+    return undefined;
+  }
+  if (!isRecord(value)) return 'Submitted value type is not supported.';
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return 'Submitted objects must be plain objects.';
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Object.keys(descriptors);
+  if (keys.some((key) => !('value' in descriptors[key]))) return 'Submitted objects may not contain accessors.';
+  for (const key of keys.slice(0, MAX_OBJECT_KEYS)) {
+    const error = validateRuntimeValue(descriptors[key].value, depth + 1, budget);
+    if (error) return error;
+  }
+  return undefined;
+}
+
 function formatValue(value: unknown, depth = 0): FormattedValue {
+  if (depth === 0) {
+    const admissibilityError = validateRuntimeValue(value);
+    if (admissibilityError) return { ok: false, message: admissibilityError };
+  }
   if (value === null || value === undefined || value === '') return { ok: true, value: '-' };
   if (typeof value === 'boolean') return { ok: true, value: value ? 'Yes' : 'No' };
   if (typeof value === 'string') return hasInvalidUnicode(value)

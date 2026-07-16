@@ -145,6 +145,25 @@ test('rejects unsupported runtime values without invoking coercion or getters', 
   assert.equal(invoked, 0);
 });
 
+test('rejects unsupported values nested at and beyond the formatting depth bound', () => {
+  class NestedHostile {}
+  const values: unknown[] = [
+    { one: { two: () => 'bad' } },
+    { one: { two: Symbol('bad') } },
+    { one: { two: new Date() } },
+    { one: [{ two: new NestedHostile() }] },
+  ];
+  for (const value of values) {
+    const result = renderTelegramTemplate(
+      document([{ type: 'paragraph', children: [{ type: 'formField', fieldId: 'email', fallback: '-' }] }]),
+      fields,
+      { email: value }
+    );
+    assert.equal(result.html, '');
+    assert.ok(result.errors.some((error) => error.code === 'unsupported_value'));
+  }
+});
+
 test('rejects lone surrogates in template text, code, URLs, and submitted values', () => {
   const invalid = '\ud800';
   const templates = [
