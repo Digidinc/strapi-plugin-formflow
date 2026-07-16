@@ -8,8 +8,11 @@ import type { Tier } from '../feature-map';
  * transport-agnostic and only ever sees the typed results below.
  */
 
-/** Abort the request if Lemon Squeezy does not respond in time. */
+/** Abort ordinary License API requests if Lemon Squeezy does not respond in time. */
 const MOR_TIMEOUT_MS = 5000;
+
+/** Activation is a cold-boot write and needs more time for DNS/TLS + processing. */
+const ACTIVATE_TIMEOUT_MS = 15_000;
 
 /** Lemon Squeezy License API base. */
 const ENDPOINT = 'https://api.lemonsqueezy.com/v1/licenses';
@@ -81,9 +84,13 @@ type MorOutcome =
  * definitive client-side rejection (4xx) from a transient connectivity failure
  * (network, abort, 5xx, parse error).
  */
-async function morFetch(url: string, body: Record<string, unknown>): Promise<MorOutcome> {
+async function morFetch(
+  url: string,
+  body: Record<string, unknown>,
+  timeoutMs = MOR_TIMEOUT_MS
+): Promise<MorOutcome> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), MOR_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   // The Lemon Squeezy License API (activate/validate/deactivate) is authenticated
   // SOLELY by the license key in the request body — it needs no seller token, so we
@@ -134,10 +141,17 @@ async function morFetch(url: string, body: Record<string, unknown>): Promise<Mor
  * Returns the new instance id and resolved tier, or `null` on any failure.
  */
 export async function activate(params: MorActivateParams): Promise<MorActivateResult | null> {
-  const outcome = await morFetch(`${ENDPOINT}/activate`, {
-    license_key: params.licenseKey,
-    instance_name: params.instanceName,
-  });
+  // Do not automatically retry this non-idempotent write: Lemon Squeezy may
+  // allocate another activation even when the first response was lost. The
+  // longer deadline handles cold DNS/TLS without risking duplicate slots.
+  const outcome = await morFetch(
+    `${ENDPOINT}/activate`,
+    {
+      license_key: params.licenseKey,
+      instance_name: params.instanceName,
+    },
+    ACTIVATE_TIMEOUT_MS
+  );
 
   // Activation only succeeds on a 2xx body that confirms activation. Any
   // connectivity failure OR definitive client-error is a failed activation.
