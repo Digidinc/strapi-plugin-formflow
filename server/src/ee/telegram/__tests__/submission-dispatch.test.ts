@@ -29,7 +29,7 @@ const setup = (dispatch: () => void) => {
       if (service === 'validation') return { validate: () => ({ errors: {} }), validateFiles: () => ({ errors: {} }), sanitize: (_f: unknown, d: unknown) => d };
       if (service === 'license') return { can: (feature: string) => ['saveResume', 'webhooks', 'email.advanced', 'integrations'].includes(feature) };
       if (service === 'analytics') return { recordEvent() {} };
-      if (service === 'telegramNotification') return { dispatchForSubmission: dispatch };
+      if (service === 'telegram') return { dispatchForSubmission: dispatch };
       if (service === 'email') return { sendSubmissionNotification: async () => { emails += 1; } };
       if (service === 'webhook') return { triggerAll: async () => { webhooks += 1; } };
       if (service === 'integration') return { dispatch: () => { integrations += 1; } };

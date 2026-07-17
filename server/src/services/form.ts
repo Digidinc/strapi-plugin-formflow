@@ -147,7 +147,7 @@ export async function validateTelegramFormSettings(
     id: field.id ?? '', type: field.type ?? '', name: field.name, label: field.label ?? field.name ?? 'Field',
   })));
   if (!templateResult.valid) return { status: 400, message: 'Telegram template is invalid.', details: { errors: templateResult.errors, warnings: templateResult.warnings } };
-  const connections = await strapi.plugin('formflow').service('telegramNotification').listConnections() as Array<{ id?: unknown; active?: unknown }>;
+  const connections = await strapi.plugin('formflow').service('telegram').listConnections() as Array<{ id?: unknown; active?: unknown }>;
   const connection = connections.find((item) => item.id === telegramNotification.connectionId);
   if (!connection) return { status: 400, message: 'The selected Telegram connection does not exist.' };
   if (connection.active !== true) return {

@@ -465,7 +465,7 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
     // terminal rejection handler, so Telegram can never change public success.
     if (form.settings?.telegramNotification?.enabled) {
       try {
-        strapi.plugin('formflow').service('telegramNotification').dispatchForSubmission(form, submission);
+        strapi.plugin('formflow').service('telegram').dispatchForSubmission(form, submission);
       } catch {
         strapi.log.error('Telegram delivery failed', { failure: 'configuration' });
       }

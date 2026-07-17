@@ -23,11 +23,11 @@ import {
 } from 'lexical';
 import { $insertNodeToNearestRoot } from '@lexical/utils';
 
-import type { TelegramTemplateDocument, TelegramTemplateField, TelegramTemplateNode } from '../telegram/template-document';
+import { shouldSyncTelegramEditorValue, type TelegramParagraphNode, type TelegramTemplateDocument, type TelegramTemplateField, type TelegramTemplateNode } from '../telegram/template-document';
 import { getTranslation } from '../../utils/getTranslation';
 
 type SerializedVariable = Spread<{ fieldId: string; type: 'telegram-variable'; version: 1 }, SerializedLexicalNode>;
-class TelegramVariableNode extends DecoratorNode<JSX.Element> {
+export class TelegramVariableNode extends DecoratorNode<JSX.Element> {
   __fieldId: string;
   __label: string;
   static getType() { return 'telegram-variable'; }
@@ -41,7 +41,7 @@ class TelegramVariableNode extends DecoratorNode<JSX.Element> {
   decorate() { return <span contentEditable={false} aria-label={this.__label} data-field-id={this.__fieldId}>{`{{ ${this.__label} }}`}</span>; }
 }
 type SerializedDivider = Spread<{ type: 'telegram-divider'; version: 1 }, SerializedLexicalNode>;
-class TelegramDividerNode extends DecoratorNode<JSX.Element> {
+export class TelegramDividerNode extends DecoratorNode<JSX.Element> {
   static getType() { return 'telegram-divider'; }
   static clone(node: TelegramDividerNode) { return new TelegramDividerNode(node.__key); }
   static importJSON(_: SerializedDivider) { return new TelegramDividerNode(); }
@@ -50,6 +50,16 @@ class TelegramDividerNode extends DecoratorNode<JSX.Element> {
   updateDOM() { return false; }
   isInline() { return false; }
   decorate() { return <hr />; }
+}
+class TelegramParagraphBreakNode extends DecoratorNode<JSX.Element> {
+  static getType() { return 'telegram-paragraph-break'; }
+  static clone(node: TelegramParagraphBreakNode) { return new TelegramParagraphBreakNode(node.__key); }
+  static importJSON() { return new TelegramParagraphBreakNode(); }
+  exportJSON() { return { ...super.exportJSON(), type: 'telegram-paragraph-break', version: 1 }; }
+  createDOM() { return document.createElement('span'); }
+  updateDOM() { return false; }
+  isInline() { return true; }
+  decorate() { return <br />; }
 }
 
 const appendInline = (parent: ReturnType<typeof $createParagraphNode>, children: any[], labels = new Map<string, string>()) => children.forEach((child) => {
@@ -65,7 +75,7 @@ export const importTelegramAstIntoLexical = (document: TelegramTemplateDocument,
     if (block.type === 'codeBlock') { const node = $createCodeNode(block.language); node.append($createTextNode(block.code)); return root.append(node); }
     if (block.type === 'list') {
       const list = new ListNode(block.style === 'ordered' ? 'number' : 'bullet');
-      block.children.forEach((item) => { const listItem = new ListItemNode(); item.children.forEach((child) => { const paragraph = $createParagraphNode(); appendInline(paragraph, child.children, labels); listItem.append(paragraph); }); list.append(listItem); });
+      block.children.forEach((item) => { const listItem = new ListItemNode(); item.children.forEach((child, index) => { if (index) listItem.append(new TelegramParagraphBreakNode()); appendInline(listItem as any, child.children, labels); }); list.append(listItem); });
       return root.append(list);
     }
     if (block.type === 'blockquote') { const quote = $createQuoteNode(); block.children.forEach((child) => { const paragraph = $createParagraphNode(); appendInline(paragraph, child.children, labels); quote.append(paragraph); }); return root.append(quote); }
@@ -80,14 +90,23 @@ const inlineFrom = (element: any): any[] => element.getChildren().flatMap((node:
   if (node.getType() === 'text') { const marks = marksOf(node); return [{ type: 'text', text: node.getTextContent(), ...(marks.length ? { marks } : {}) }]; }
   return $isElementNode(node) ? inlineFrom(node) : [];
 });
+const paragraphsFromListItem = (item: ListItemNode): TelegramParagraphNode[] => {
+  const paragraphs: TelegramParagraphNode[] = [{ type: 'paragraph', children: [] }];
+  item.getChildren().forEach((node: any) => {
+    if (node instanceof TelegramParagraphBreakNode) paragraphs.push({ type: 'paragraph', children: [] });
+    else paragraphs[paragraphs.length - 1].children.push(...inlineFrom({ getChildren: () => [node] }));
+  });
+  return paragraphs;
+};
 export const exportLexicalToTelegramAst = (): TelegramTemplateDocument => ({ version: 1, document: { type: 'document', children: $getRoot().getChildren().flatMap((node: any): TelegramTemplateNode[] => {
   if (node instanceof TelegramDividerNode) return [{ type: 'divider' }];
   if (node instanceof CodeNode) { const language = node.getLanguage(); return [{ type: 'codeBlock', code: node.getTextContent(), ...(language ? { language } : {}) }]; }
-  if (node instanceof ListNode) return [{ type: 'list', style: node.getListType() === 'number' ? 'ordered' : 'unordered', children: node.getChildren().map((item: any) => ({ type: 'listItem', children: item.getChildren().map((child: any) => ({ type: 'paragraph', children: inlineFrom(child) })) })) }];
+  if (node instanceof ListNode) return [{ type: 'list', style: node.getListType() === 'number' ? 'ordered' : 'unordered', children: node.getChildren().map((item: any) => ({ type: 'listItem', children: paragraphsFromListItem(item) })) }];
   if (node instanceof QuoteNode) return [{ type: 'blockquote', children: node.getChildren().map((child: any) => ({ type: 'paragraph', children: inlineFrom(child) })) }];
   if (node instanceof HeadingNode) return [{ type: 'heading', level: Number(node.getTag().slice(1)) as 1 | 2 | 3, children: inlineFrom(node) }];
   return [{ type: 'paragraph', children: inlineFrom(node) }];
 }) } });
+export const telegramEditorNodes = [HeadingNode, QuoteNode, CodeNode, LinkNode, ListNode, ListItemNode, TelegramVariableNode, TelegramDividerNode, TelegramParagraphBreakNode];
 
 const EditorCommands = ({ fields }: { fields: readonly TelegramTemplateField[] }) => {
   const { formatMessage } = useIntl();
@@ -106,13 +125,12 @@ const EditorCommands = ({ fields }: { fields: readonly TelegramTemplateField[] }
   </div>;
 };
 
-const ValueSyncPlugin = ({ value, fields }: { value: TelegramTemplateDocument; fields: readonly TelegramTemplateField[] }) => {
+const ValueSyncPlugin = ({ value, fields, current }: { value: TelegramTemplateDocument; fields: readonly TelegramTemplateField[]; current: React.MutableRefObject<string> }) => {
   const [editor] = useLexicalComposerContext();
   const serialized = JSON.stringify(value);
-  const applied = useRef(serialized);
   useEffect(() => {
-    if (serialized === applied.current) return;
-    applied.current = serialized;
+    if (!shouldSyncTelegramEditorValue(current.current, serialized)) return;
+    current.current = serialized;
     editor.update(() => importTelegramAstIntoLexical(value, fields), { tag: 'formflow-external-sync' });
   }, [editor, fields, serialized, value]);
   return null;
@@ -120,6 +138,7 @@ const ValueSyncPlugin = ({ value, fields }: { value: TelegramTemplateDocument; f
 
 export const TelegramTemplateEditor = ({ value, fields, onChange }: { value: TelegramTemplateDocument; fields: readonly TelegramTemplateField[]; onChange(value: TelegramTemplateDocument): void }) => {
   const { formatMessage } = useIntl();
-  const config = useMemo(() => ({ namespace: 'FormFlowTelegram', nodes: [HeadingNode, QuoteNode, CodeNode, LinkNode, ListNode, ListItemNode, TelegramVariableNode, TelegramDividerNode], onError: (error: Error) => { throw error; }, editorState: () => importTelegramAstIntoLexical(value, fields), theme: {} }), []);
-  return <LexicalComposer initialConfig={config}><ValueSyncPlugin value={value} fields={fields} /><EditorCommands fields={fields} /><RichTextPlugin contentEditable={<ContentEditable aria-label={formatMessage({ id: getTranslation('notifications.telegram.editor.label'), defaultMessage: 'Telegram notification template' })} style={{ minHeight: 180, border: '1px solid #dcdce4', padding: 12 }} />} placeholder={<span>{formatMessage({ id: getTranslation('notifications.telegram.editor.placeholder'), defaultMessage: 'Write a Telegram notification…' })}</span>} ErrorBoundary={({ children }) => children} /><HistoryPlugin /><ListPlugin /><LinkPlugin validateUrl={(url) => { try { return ['http:', 'https:', 'mailto:'].includes(new URL(url).protocol); } catch { return false; } }} /><OnChangePlugin ignoreSelectionChange onChange={(state, editor, tags) => { if (!tags.has('formflow-external-sync')) state.read(() => onChange(exportLexicalToTelegramAst())); }} /></LexicalComposer>;
+  const current = useRef(JSON.stringify(value));
+  const config = useMemo(() => ({ namespace: 'FormFlowTelegram', nodes: telegramEditorNodes, onError: (error: Error) => { throw error; }, editorState: () => importTelegramAstIntoLexical(value, fields), theme: {} }), []);
+  return <LexicalComposer initialConfig={config}><ValueSyncPlugin value={value} fields={fields} current={current} /><EditorCommands fields={fields} /><RichTextPlugin contentEditable={<ContentEditable aria-label={formatMessage({ id: getTranslation('notifications.telegram.editor.label'), defaultMessage: 'Telegram notification template' })} style={{ minHeight: 180, border: '1px solid #dcdce4', padding: 12 }} />} placeholder={<span>{formatMessage({ id: getTranslation('notifications.telegram.editor.placeholder'), defaultMessage: 'Write a Telegram notification…' })}</span>} ErrorBoundary={({ children }) => children} /><HistoryPlugin /><ListPlugin /><LinkPlugin validateUrl={(url) => { try { return ['http:', 'https:', 'mailto:'].includes(new URL(url).protocol); } catch { return false; } }} /><OnChangePlugin ignoreSelectionChange onChange={(state, editor, tags) => { if (!tags.has('formflow-external-sync')) state.read(() => { const next = exportLexicalToTelegramAst(); current.current = JSON.stringify(next); onChange(next); }); }} /></LexicalComposer>;
 };

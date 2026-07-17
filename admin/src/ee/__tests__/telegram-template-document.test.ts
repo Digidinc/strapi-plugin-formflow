@@ -7,6 +7,7 @@ import {
   previewTelegramDocument,
   sampleForField,
   serializeTelegramDocument,
+  shouldSyncTelegramEditorValue,
   validateTelegramDocument,
 } from '../telegram/template-document';
 
@@ -37,6 +38,12 @@ test('sample values use a dash when a field has no useful sample', () => {
   assert.equal(sampleForField(fields[0]), 'person@example.com');
 });
 
+test('parent echoes do not sync but a true external replacement does', () => {
+  const local = '{"version":1,"local":true}';
+  assert.equal(shouldSyncTelegramEditorValue(local, local), false);
+  assert.equal(shouldSyncTelegramEditorValue(local, '{"version":1,"reset":true}'), true);
+});
+
 test('serialization restores the public FormFlow AST and rejects private editor state', () => {
   const document = createDefaultTelegramDocument(fields);
   assert.deepEqual(deserializeTelegramDocument(serializeTelegramDocument(document)), document);
@@ -64,4 +71,13 @@ test('admin validation rejects malformed server-contract nodes', () => {
   const result = validateTelegramDocument(badMark, []);
   assert.equal(result.errors.some((item) => item.code === 'unsupported_mark'), true);
   assert.equal(result.errors.some((item) => item.code === 'unknown_property'), true);
+});
+
+test('validation is nonthrowing for arbitrary malformed input', () => {
+  const cyclic: any = { version: 1, document: { type: 'document', children: [] } }; cyclic.self = cyclic;
+  for (const value of [null, undefined, 1, 'x', [], {}, cyclic,
+    { version: 1, document: { type: 'document', children: [{ type: 'heading', level: 9, children: [] }] } },
+    { version: 1, document: { type: 'document', children: [{ type: 'list', style: 'bad', children: [{}] }] } },
+    { version: 1, document: { type: 'document', children: [{ type: 'blockquote', children: [{ type: 'text', text: 'x' }] }] } },
+  ]) assert.doesNotThrow(() => validateTelegramDocument(value as any, fields));
 });

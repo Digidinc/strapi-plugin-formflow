@@ -6,8 +6,14 @@ import publicRoutes from '../../routes/content-api';
 import { RBAC_ACTIONS } from '../../register';
 import telegramController from '../telegram';
 import formService, { validateTelegramFormSettings } from '../../services/form';
+import services from '../../services';
 
 const routes = adminRoutes.routes as Array<any>;
+
+test('Telegram is registered and looked up under the service name telegram', () => {
+  assert.equal(typeof services.telegram, 'function');
+  assert.equal(Object.prototype.hasOwnProperty.call(services, 'telegramNotification'), false);
+});
 
 test('Telegram admin routes use explicit settings and form-update RBAC actions', () => {
   const expected: Record<string, string> = {
