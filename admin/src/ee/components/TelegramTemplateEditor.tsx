@@ -128,13 +128,30 @@ export const replaceSelectedTelegramBlock = (kind: string): void => {
   const replacement = kind === 'quote' ? $createQuoteNode() : kind === 'codeBlock' ? $createCodeNode() : kind.startsWith('heading') ? $createHeadingNode(kind.replace('heading', 'h') as any) : $createParagraphNode();
   const children = anchor.getChildren();
   // Quotes use Lexical's supported inline-child shape. Defensive flattening
-  // prevents a legacy nested paragraph from becoming a paragraph child.
-  children.forEach((child: any, index: number) => {
+  // prevents a legacy nested paragraph from becoming a paragraph child. Other
+  // block kinds cannot retain structural paragraph breaks, so serialize those
+  // boundaries as visible newline text rather than silently dropping them.
+  const appendBoundary = () => replacement.append(
+    replacement instanceof QuoteNode ? new TelegramParagraphBreakNode() : $createTextNode('\n')
+  );
+  let hasContent = false;
+  const appendFlattened = (child: any, structuralBoundary = false): void => {
+    if (child instanceof TelegramParagraphBreakNode) {
+      appendBoundary();
+      hasContent = true;
+      return;
+    }
     if ($isElementNode(child) && !(child instanceof LinkNode)) {
-      if (index) replacement.append(new TelegramParagraphBreakNode());
-      replacement.append(...child.getChildren());
-    } else replacement.append(child);
-  });
+      if (structuralBoundary && hasContent) appendBoundary();
+      child.getChildren().forEach((nested: any, index: number) =>
+        appendFlattened(nested, index > 0 && $isElementNode(nested) && !(nested instanceof LinkNode))
+      );
+      return;
+    }
+    replacement.append(child);
+    hasContent = true;
+  };
+  children.forEach((child: any, index: number) => appendFlattened(child, index > 0 && $isElementNode(child) && !(child instanceof LinkNode)));
   anchor.replace(replacement);
 };
 

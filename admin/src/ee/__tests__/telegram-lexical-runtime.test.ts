@@ -44,3 +44,50 @@ test('runtime toolbar converts paragraph to quote and back without nesting block
   }, { discrete: true });
   editor.getEditorState().read(() => assert.deepEqual(exportLexicalToTelegramAst(), document));
 });
+
+test('runtime toolbar preserves multi-paragraph quote boundaries when converting to paragraph', () => {
+  const document: TelegramTemplateDocument = { version: 1, document: { type: 'document', children: [
+    { type: 'blockquote', children: [
+      { type: 'paragraph', children: [{ type: 'text', text: 'quote one' }] },
+      { type: 'paragraph', children: [{ type: 'text', text: 'quote two' }] },
+    ] },
+  ] } };
+  const editor = createEditor({ namespace: 'quote-to-paragraph-test', nodes: telegramEditorNodes, onError(error) { throw error; } });
+  editor.update(() => {
+    importTelegramAstIntoLexical(document);
+    $getRoot().getFirstChildOrThrow().selectEnd();
+    replaceSelectedTelegramBlock('paragraph');
+  }, { discrete: true });
+  let converted!: TelegramTemplateDocument;
+  editor.getEditorState().read(() => {
+    converted = exportLexicalToTelegramAst();
+    assert.equal($getRoot().getTextContent(), 'quote one\nquote two');
+  });
+  assert.deepEqual(converted.document.children, [{ type: 'paragraph', children: [
+    { type: 'text', text: 'quote one\nquote two' },
+  ] }]);
+  editor.update(() => importTelegramAstIntoLexical(converted), { discrete: true });
+  editor.getEditorState().read(() => assert.deepEqual(exportLexicalToTelegramAst(), converted));
+});
+
+test('runtime toolbar preserves list item boundaries when converting list to paragraph', () => {
+  const document: TelegramTemplateDocument = { version: 1, document: { type: 'document', children: [
+    { type: 'list', style: 'unordered', children: [
+      { type: 'listItem', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'first' }] }] },
+      { type: 'listItem', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'second' }] }] },
+    ] },
+  ] } };
+  const editor = createEditor({ namespace: 'list-to-paragraph-test', nodes: telegramEditorNodes, onError(error) { throw error; } });
+  editor.update(() => {
+    importTelegramAstIntoLexical(document);
+    $getRoot().getFirstChildOrThrow().selectEnd();
+    replaceSelectedTelegramBlock('paragraph');
+  }, { discrete: true });
+  let converted!: TelegramTemplateDocument;
+  editor.getEditorState().read(() => {
+    converted = exportLexicalToTelegramAst();
+    assert.equal($getRoot().getTextContent(), 'first\nsecond');
+  });
+  editor.update(() => importTelegramAstIntoLexical(converted), { discrete: true });
+  editor.getEditorState().read(() => assert.deepEqual(exportLexicalToTelegramAst(), converted));
+});
