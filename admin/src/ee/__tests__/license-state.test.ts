@@ -101,6 +101,16 @@ assert.equal(
   }).limits.telegramConnections,
   3
 );
+for (const telegramConnections of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '3', 'forever']) {
+  assert.throws(() => parseLicenseSnapshot({
+    tier: 'business', state: 'active', resolution: 'resolved', graceUntil: null,
+    features: { integrations: true }, limits: { telegramConnections },
+  }), `must reject invalid telegram connection limit ${String(telegramConnections)}`);
+}
+assert.equal(parseLicenseSnapshot({
+  tier: 'business', state: 'active', resolution: 'resolved', graceUntil: null,
+  features: {}, limits: { telegramConnections: 'unlimited' },
+}).limits.telegramConnections, 'unlimited');
 assert.deepEqual([0, 1, 2, 3, 20].map(retryDelay), [250, 500, 1000, 1000, 1000]);
 
 const refreshStartResolution = (

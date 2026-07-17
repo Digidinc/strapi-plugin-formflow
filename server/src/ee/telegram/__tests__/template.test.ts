@@ -13,6 +13,7 @@ import type { TelegramTemplateDocument } from '../types';
 const fields = [
   { id: 'email', type: 'email', name: 'email', label: 'Email' },
   { id: 'secret', type: 'password', name: 'secret', label: 'Secret' },
+  { id: 'hidden', type: 'hidden', name: 'hidden', label: 'Hidden' },
   { id: 'files', type: 'file', name: 'files', label: 'Files' },
 ];
 
@@ -69,6 +70,15 @@ test('escapes hostile submitted values and uses fallback for empty values', () =
   });
   assert.equal(result.html, '&lt;a href=&quot;tg://user?id=1&quot;&gt;&amp; attack&lt;/a&gt; / -');
   assert.deepEqual(result.warnings.map((warning) => warning.code), ['sensitive_field']);
+});
+
+test('warns for the same password and hidden sensitive fields as the admin validator', () => {
+  const template = document([{ type: 'paragraph', children: [
+    { type: 'formField', fieldId: 'secret', fallback: '-' },
+    { type: 'formField', fieldId: 'hidden', fallback: '-' },
+  ] }]);
+  const result = validateTemplate(template, fields);
+  assert.deepEqual(result.warnings.map((warning) => warning.fieldId), ['secret', 'hidden']);
 });
 
 test('formats arrays, booleans, files and objects within explicit bounds', () => {

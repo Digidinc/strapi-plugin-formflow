@@ -127,7 +127,7 @@ export function validateTemplate(
         const field = fieldById.get(value.fieldId);
         meaningful = true;
         if (!field) error('stale_field', `${path}.fieldId`, `Field "${value.fieldId}" no longer exists.`);
-        else if (field.type === 'password' && !warned.has(field.id)) {
+        else if ((field.type === 'password' || field.type === 'hidden') && !warned.has(field.id)) {
           warned.add(field.id);
           warnings.push({ code: 'sensitive_field', fieldId: field.id, message: `Field "${field.label}" may contain sensitive data.` });
         }

@@ -52,7 +52,11 @@ export function parseLicenseSnapshot(value: unknown): LicenseSnapshot {
     !isObject(features) ||
     Object.values(features).some((enabled) => typeof enabled !== 'boolean') ||
     !isObject(limits) ||
-    (typeof limits.telegramConnections !== 'number' && limits.telegramConnections !== 'unlimited')
+    (limits.telegramConnections !== 'unlimited' &&
+      (typeof limits.telegramConnections !== 'number' ||
+        !Number.isFinite(limits.telegramConnections) ||
+        !Number.isInteger(limits.telegramConnections) ||
+        limits.telegramConnections < 0))
   ) {
     throw new Error('Invalid license snapshot');
   }

@@ -14,6 +14,7 @@ import {
 const fields = [
   { id: 'email-id', type: 'email', name: 'email', label: 'Email' },
   { id: 'password-id', type: 'password', name: 'password', label: 'Password' },
+  { id: 'hidden-id', type: 'hidden', name: 'hidden', label: 'Hidden' },
 ];
 
 test('default document references fields by stable ID with dash fallbacks', () => {
@@ -30,7 +31,7 @@ test('validation reports stale and sensitive field references', () => {
   const result = validateTelegramDocument(document, fields);
   assert.equal(result.valid, false);
   assert.equal(result.errors.some((item) => item.code === 'stale_field'), true);
-  assert.deepEqual(result.warnings.map((item) => item.fieldId), ['password-id']);
+  assert.deepEqual(result.warnings.map((item) => item.fieldId), ['password-id', 'hidden-id']);
 });
 
 test('sample values use a dash when a field has no useful sample', () => {
