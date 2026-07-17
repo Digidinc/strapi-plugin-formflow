@@ -10,9 +10,9 @@ test('counts form settings that reference a stable Telegram connection ID', asyn
     return { findMany: async (query: unknown) => {
       seen.push(query);
       return [
-        { settings: { telegram: { connectionId: 'wanted' } } },
-        { settings: { telegram: { connectionId: 'other' } } },
-        { settings: { telegram: { connectionId: 'wanted' } } },
+        { settings: { telegramNotification: { connectionId: 'wanted' } } },
+        { settings: { telegramNotification: { connectionId: 'other' } } },
+        { settings: { telegramNotification: { connectionId: 'wanted' } } },
       ];
     } };
   } } as any;
@@ -29,7 +29,7 @@ test('production wrapper wires the Strapi-backed reference counter into safe res
     plugin: () => ({ service: () => ({ limit: () => 1 }) }),
     store: () => ({ get: async () => stored, set: async () => undefined }),
     config: { get: () => undefined },
-    documents: () => ({ findMany: async () => [{ settings: { telegram: { connectionId: 'stable-id' } } }] }),
+    documents: () => ({ findMany: async () => [{ settings: { telegramNotification: { connectionId: 'stable-id' } } }] }),
   } as any;
   const service = telegramService({ strapi });
   const listed = await service.listConnections() as Array<{ referenceCount: number }>;
@@ -45,7 +45,7 @@ test('MIT boundary contains asynchronous EE dispatch rejection and returns immed
     log: { error: (...args: unknown[]) => errors.push(args) },
   } as any;
   const service = telegramService({ strapi });
-  assert.equal(service.dispatchForSubmission({ settings: { telegram: { enabled: true } } }, {}), undefined);
+  assert.equal(service.dispatchForSubmission({ settings: { telegramNotification: { enabled: true } } }, {}), undefined);
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.ok(errors.length > 0);
   assert.doesNotMatch(JSON.stringify(errors), /SECRET|store failure/);

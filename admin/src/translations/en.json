@@ -653,6 +653,7 @@
   "formflow.notifications.telegram.validation.title": "Template needs attention",
   "formflow.notifications.telegram.sensitive.title": "Sensitive fields included",
   "formflow.notifications.telegram.preview": "Preview",
+  "formflow.notifications.telegram.preview.frame": "Telegram message preview",
   "formflow.notifications.telegram.test": "Send test",
   "formflow.notifications.telegram.test.success": "Telegram test message sent.",
   "formflow.notifications.telegram.test.failure": "Telegram test message could not be sent.",
@@ -677,6 +678,12 @@
   "formflow.notifications.telegram.editor.undo": "Undo",
   "formflow.notifications.telegram.editor.redo": "Redo",
   "formflow.notifications.telegram.editor.variable": "Insert form variable",
+  "formflow.notifications.telegram.editor.sensitive": "sensitive",
   "formflow.notifications.telegram.editor.label": "Telegram notification template",
-  "formflow.notifications.telegram.editor.placeholder": "Write a Telegram notification…"
+  "formflow.notifications.telegram.editor.placeholder": "Write a Telegram notification…",
+  "formflow.settings.telegram.bot.unavailable": "Bot metadata unavailable",
+  "formflow.notifications.telegram.status.missing.body": "The saved connection was deleted. Select another connection.",
+  "formflow.notifications.telegram.status.inactive.body": "This connection is inactive because it exceeds the licensed limit.",
+  "formflow.notifications.telegram.status.disconnected.body": "This connection has no available credential.",
+  "formflow.notifications.telegram.connection.inactiveSuffix": " (inactive)"
 }

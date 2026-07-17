@@ -102,7 +102,7 @@ export interface FormSettings {
    * unaffected.
    */
   customCss?: string;
-  telegram?: {
+  telegramNotification?: {
     enabled: boolean;
     connectionId: string;
     destination: string;
@@ -125,17 +125,17 @@ export async function validateTelegramFormSettings(
   fields: readonly Partial<FormField>[],
   settings: unknown
 ): Promise<TelegramFormSettingsError | null> {
-  if (!record(settings) || !Object.prototype.hasOwnProperty.call(settings, 'telegram')) return null;
-  const telegram = settings.telegram;
-  if (!record(telegram) || typeof telegram.enabled !== 'boolean') {
+  if (!record(settings) || !Object.prototype.hasOwnProperty.call(settings, 'telegramNotification')) return null;
+  const telegramNotification = settings.telegramNotification;
+  if (!record(telegramNotification) || typeof telegramNotification.enabled !== 'boolean') {
     return { status: 400, message: 'Telegram settings are invalid.' };
   }
-  if (telegram.enabled === false) return null;
-  if (!Object.keys(telegram).every((key) => ['enabled', 'connectionId', 'destination', 'template'].includes(key)) ||
-    typeof telegram.connectionId !== 'string' || telegram.connectionId.length === 0 ||
-    typeof telegram.destination !== 'string' ||
-    (!/^-?[1-9]\d{0,19}$/.test(telegram.destination) && !/^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(telegram.destination)) ||
-    !record(telegram.template)) {
+  if (telegramNotification.enabled === false) return null;
+  if (!Object.keys(telegramNotification).every((key) => ['enabled', 'connectionId', 'destination', 'template'].includes(key)) ||
+    typeof telegramNotification.connectionId !== 'string' || telegramNotification.connectionId.length === 0 ||
+    typeof telegramNotification.destination !== 'string' ||
+    (!/^-?[1-9]\d{0,19}$/.test(telegramNotification.destination) && !/^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(telegramNotification.destination)) ||
+    !record(telegramNotification.template)) {
     return { status: 400, message: 'Telegram connection, destination, or template is invalid.' };
   }
   const license = strapi.plugin('formflow').service('license');
@@ -143,12 +143,12 @@ export async function validateTelegramFormSettings(
     return { status: 402, message: 'Upgrade to Pro to use feature: integrations', details: { feature: 'integrations', requiredTier: 'pro', resolution: license.resolution?.() ?? 'unresolved' } };
   }
   const { validateTemplate } = await import('../ee/telegram/template');
-  const templateResult = validateTemplate(telegram.template as any, fields.map((field) => ({
+  const templateResult = validateTemplate(telegramNotification.template as any, fields.map((field) => ({
     id: field.id ?? '', type: field.type ?? '', name: field.name, label: field.label ?? field.name ?? 'Field',
   })));
   if (!templateResult.valid) return { status: 400, message: 'Telegram template is invalid.', details: { errors: templateResult.errors, warnings: templateResult.warnings } };
-  const connections = await strapi.plugin('formflow').service('telegram').listConnections() as Array<{ id?: unknown; active?: unknown }>;
-  const connection = connections.find((item) => item.id === telegram.connectionId);
+  const connections = await strapi.plugin('formflow').service('telegramNotification').listConnections() as Array<{ id?: unknown; active?: unknown }>;
+  const connection = connections.find((item) => item.id === telegramNotification.connectionId);
   if (!connection) return { status: 400, message: 'The selected Telegram connection does not exist.' };
   if (connection.active !== true) return {
     status: 402,
@@ -311,18 +311,18 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
       }));
     }
 
-    if (data.fields || (data.settings && Object.prototype.hasOwnProperty.call(data.settings, 'telegram'))) {
+    if (data.fields || (data.settings && Object.prototype.hasOwnProperty.call(data.settings, 'telegramNotification'))) {
       const existing = await this.findOne(documentId) as { fields?: Partial<FormField>[]; settings?: Record<string, unknown> } | null;
       const fields = (processedData.fields ?? existing?.fields ?? []) as Partial<FormField>[];
       const existingSettings = existing?.settings ?? {};
       const settings = {
         ...existingSettings,
         ...data.settings,
-        ...(data.settings && Object.prototype.hasOwnProperty.call(data.settings, 'telegram')
+        ...(data.settings && Object.prototype.hasOwnProperty.call(data.settings, 'telegramNotification')
           ? {
-              telegram: {
-                ...(record(existingSettings.telegram) ? existingSettings.telegram : {}),
-                ...(record(data.settings.telegram) ? data.settings.telegram : {}),
+              telegramNotification: {
+                ...(record(existingSettings.telegramNotification) ? existingSettings.telegramNotification : {}),
+                ...(record(data.settings.telegramNotification) ? data.settings.telegramNotification : {}),
               },
             }
           : {}),

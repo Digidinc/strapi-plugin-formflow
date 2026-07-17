@@ -9,7 +9,7 @@ import { createTelegramService } from '../index';
 const form: SubmittableForm = {
   documentId: 'form-1', slug: 'contact', title: 'Contact', isActive: true,
   fields: [], updatedAt: '2026-01-01T00:00:00.000Z',
-  settings: { telegram: { enabled: true, connectionId: 'connection-1' as any, destination: 'chat-1', template: { version: 1, document: { type: 'document', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'Hello' }] }] } } } },
+  settings: { telegramNotification: { enabled: true, connectionId: 'connection-1' as any, destination: 'chat-1', template: { version: 1, document: { type: 'document', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'Hello' }] }] } } } },
 };
 
 const setup = (dispatch: () => void) => {
@@ -29,7 +29,7 @@ const setup = (dispatch: () => void) => {
       if (service === 'validation') return { validate: () => ({ errors: {} }), validateFiles: () => ({ errors: {} }), sanitize: (_f: unknown, d: unknown) => d };
       if (service === 'license') return { can: (feature: string) => ['saveResume', 'webhooks', 'email.advanced', 'integrations'].includes(feature) };
       if (service === 'analytics') return { recordEvent() {} };
-      if (service === 'telegram') return { dispatchForSubmission: dispatch };
+      if (service === 'telegramNotification') return { dispatchForSubmission: dispatch };
       if (service === 'email') return { sendSubmissionNotification: async () => { emails += 1; } };
       if (service === 'webhook') return { triggerAll: async () => { webhooks += 1; } };
       if (service === 'integration') return { dispatch: () => { integrations += 1; } };
@@ -68,7 +68,7 @@ test('disabled Telegram settings do not prevent independent existing hooks', asy
   let dispatches = 0;
   const original = form.settings;
   form.settings = {
-    telegram: { ...(original!.telegram as any), enabled: false },
+    telegramNotification: { ...(original!.telegramNotification as any), enabled: false },
     emailNotifications: [{ enabled: true, to: ['admin@example.com'] }],
     webhooks: [{ enabled: true, url: 'https://example.com/hook' }],
   };
@@ -96,7 +96,7 @@ test('enforces current integration entitlement and active connection quantity be
     logger: { error() {} },
   });
   const dispatch = (connectionId: string) => service.dispatchForSubmission({
-    fields: [], settings: { telegram: { ...form.settings!.telegram!, connectionId: connectionId as any, enabled: true } as any },
+    fields: [], settings: { telegramNotification: { ...form.settings!.telegramNotification!, connectionId: connectionId as any, enabled: true } as any },
   }, { data: {} });
   dispatch('active');
   entitled = true;

@@ -98,7 +98,7 @@ export const TelegramConnectionsSettings = () => {
               const policy = telegramConnectionMutationPolicy(connection.active, Boolean(canUpdate));
               return <Tr key={connection.id}>
                 <Td><Typography>{connection.name}</Typography></Td>
-                <Td><Typography>{connection.bot.displayName}{connection.bot.username ? ` (@${connection.bot.username})` : ''}</Typography></Td>
+                <Td><Typography>{connection.bot ? `${connection.bot.displayName}${connection.bot.username ? ` (@${connection.bot.username})` : ''}` : formatMessage({ id: getTranslation('settings.telegram.bot.unavailable'), defaultMessage: 'Bot metadata unavailable' })}</Typography></Td>
                 <Td><Typography>{connection.tokenSource.type === 'stored' ? formatMessage({ id: getTranslation('settings.telegram.credential.stored'), defaultMessage: 'Stored securely' }) : connection.tokenSource.variableName}</Typography></Td>
                 <Td><Badge active={availability === 'connected'}>{formatMessage({ id: getTranslation(`settings.telegram.status.${availability}`), defaultMessage: availability })}</Badge>{!connection.active ? <Typography textColor="neutral600">{formatMessage({ id: getTranslation('settings.telegram.inactive.explanation'), defaultMessage: 'This excess connection is read-only. Delete it to return to your licensed limit, or upgrade to edit it.' })}</Typography> : null}</Td>
                 <Td><Flex gap={1}><Button variant="ghost" aria-label={formatMessage({ id: getTranslation('settings.telegram.edit.aria'), defaultMessage: 'Edit {name}' }, { name: connection.name })} disabled={!policy.canEdit} onClick={() => setEditor({ kind: 'edit', connection })}><Pencil /></Button><Button variant="danger-light" aria-label={formatMessage({ id: getTranslation('settings.telegram.delete.aria'), defaultMessage: 'Delete {name}' }, { name: connection.name })} disabled={!policy.canDelete} onClick={() => setDeleting(connection)}><Trash /></Button></Flex></Td>
@@ -128,7 +128,7 @@ const ConnectionDialog = ({ editor, onClose, onSaved }: { editor: Editor | null;
   useEffect(() => {
     setName(editor?.kind === 'edit' ? editor.connection.name : '');
     setDraft(editor?.kind === 'create' ? { mode: 'stored', token: '', variableName: '' } : resetTelegramCredentialDraft());
-    setValidatedBot(editor?.kind === 'edit' ? editor.connection.bot : null);
+    setValidatedBot(editor?.kind === 'edit' ? editor.connection.bot ?? null : null);
     setValidatedFingerprint(editor?.kind === 'edit' ? `${editor.connection.name}|keep||` : null);
   }, [editor]);
 
@@ -137,7 +137,7 @@ const ConnectionDialog = ({ editor, onClose, onSaved }: { editor: Editor | null;
     : draft.mode === 'environment' ? { type: 'environment', variableName: draft.variableName.trim() } : null;
   const valid = name.trim() !== '' && (draft.mode === 'keep' || (draft.mode === 'environment' ? draft.variableName.trim() !== '' : draft.token.trim() !== ''));
   const fingerprint = `${name.trim()}|${draft.mode}|${draft.token.trim()}|${draft.variableName.trim()}`;
-  const existingBot = editor?.kind === 'edit' ? editor.connection.bot : null;
+  const existingBot = editor?.kind === 'edit' ? editor.connection.bot ?? null : null;
   const reviewedBot = draft.mode === 'keep' ? existingBot : validatedBot;
   const canSubmit = telegramDraftCanSubmit(name, draft.mode, validatedFingerprint, fingerprint, validatedBot, existingBot);
 

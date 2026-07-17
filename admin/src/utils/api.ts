@@ -62,7 +62,7 @@ export interface TelegramConnectionResponse {
   name: string;
   tokenSource: { type: 'stored' } | { type: 'environment'; variableName: string };
   credentialConfigured: boolean;
-  bot: TelegramBotMetadataResponse;
+  bot?: TelegramBotMetadataResponse;
   createdAt: string;
   updatedAt: string;
   active: boolean;

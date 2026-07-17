@@ -30,12 +30,12 @@ export const telegramNotificationState = (value: TelegramNotificationValue, conn
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const isSafeUrl = (url: string) => { try { return ['http:', 'https:', 'mailto:'].includes(new URL(url).protocol); } catch { return false; } };
 
-export const createDefaultTelegramDocument = (fields: readonly TelegramTemplateField[]): TelegramTemplateDocument => ({
+export const createDefaultTelegramDocument = (fields: readonly TelegramTemplateField[], formTitle = 'Form'): TelegramTemplateDocument => ({
   version: 1,
   document: {
     type: 'document',
     children: [
-      { type: 'heading', level: 2, children: [{ type: 'text', text: 'New form submission' }] },
+      { type: 'heading', level: 2, children: [{ type: 'text', text: `New ${formTitle.trim() || 'form'} submission` }] },
       ...fields.map((field): TelegramParagraphNode => ({ type: 'paragraph', children: [
         { type: 'text', text: `${field.label}: `, marks: ['bold'] },
         { type: 'formField', fieldId: field.id, fallback: '-' },
@@ -57,25 +57,48 @@ export const validateTelegramDocument = (template: TelegramTemplateDocument, fie
   const warnings: TelegramDocumentWarning[] = [];
   const fieldMap = new Map(fields.map((field) => [field.id, field]));
   const warned = new Set<string>();
+  const raw = template as unknown as Record<string, any>;
+  const issue = (code: string, path: string, message: string) => errors.push({ code, path, message });
+  if (!raw || typeof raw !== 'object' || raw.version !== 1 || !raw.document || raw.document.type !== 'document' || !Array.isArray(raw.document.children)) {
+    return { valid: false, errors: [{ code: 'invalid_document', path: '$', message: 'A version 1 FormFlow document is required.' }], warnings };
+  }
+  const allowed = (node: Record<string, unknown>, names: string[], path: string) => Object.keys(node).forEach((key) => { if (!names.includes(key)) issue('unknown_property', `${path}.${key}`, `Unsupported property "${key}".`); });
+  let count = 0; let meaningful = false;
+  const invalidUnicode = (value: string) => { for (let i = 0; i < value.length; i += 1) { const unit = value.charCodeAt(i); if (unit >= 0xd800 && unit <= 0xdbff) { const next = value.charCodeAt(++i); if (!(next >= 0xdc00 && next <= 0xdfff)) return true; } else if (unit >= 0xdc00 && unit <= 0xdfff) return true; } return false; };
   const inline = (nodes: TelegramInlineNode[], path: string) => nodes.forEach((node, index) => {
     const nodePath = `${path}[${index}]`;
+    count += 1;
+    if (!node || typeof node !== 'object') return issue('invalid_node', nodePath, 'Inline node must be an object.');
+    if (node.type === 'text') { allowed(node, ['type', 'text', 'marks'], nodePath); if (typeof node.text !== 'string') issue('invalid_text', `${nodePath}.text`, 'Text must be a string.'); else { meaningful ||= node.text.trim().length > 0; if (invalidUnicode(node.text)) issue('invalid_unicode', `${nodePath}.text`, 'Text contains invalid Unicode.'); } if (node.marks && (!Array.isArray(node.marks) || node.marks.some((mark) => !['bold','italic','underline','strikethrough','code'].includes(mark)))) issue('unsupported_mark', `${nodePath}.marks`, 'Unsupported text mark.'); return; }
     if (node.type === 'formField') {
+      allowed(node, ['type', 'fieldId', 'fallback'], nodePath); meaningful = true;
+      if (!node.fieldId) issue('invalid_field', `${nodePath}.fieldId`, 'A stable field ID is required.');
+      if (node.fallback !== '-') issue('invalid_fallback', `${nodePath}.fallback`, 'The supported fallback is "-".');
       const field = fieldMap.get(node.fieldId);
       if (!field) errors.push({ code: 'stale_field', path: `${nodePath}.fieldId`, message: `Field "${node.fieldId}" no longer exists.` });
       else if ((field.type === 'password' || field.type === 'hidden') && !warned.has(field.id)) {
         warned.add(field.id); warnings.push({ code: 'sensitive_field', fieldId: field.id, message: `Field "${field.label}" may contain sensitive data.` });
       }
     } else if (node.type === 'link') {
+      allowed(node, ['type', 'url', 'children'], nodePath);
       if (!isSafeUrl(node.url)) errors.push({ code: 'unsafe_link', path: `${nodePath}.url`, message: 'Only http, https, and mailto links are allowed.' });
       inline(node.children, `${nodePath}.children`);
-    }
+    } else issue('unsupported_node', `${nodePath}.type`, 'Unsupported inline node.');
   });
   template.document.children.forEach((node, index) => {
     const path = `$.document.children[${index}]`;
+    count += 1;
+    if (!node || typeof node !== 'object') return issue('invalid_node', path, 'Block node must be an object.');
     if (node.type === 'paragraph' || node.type === 'heading') inline(node.children, `${path}.children`);
     else if (node.type === 'blockquote') node.children.forEach((child, childIndex) => inline(child.children, `${path}.children[${childIndex}].children`));
     else if (node.type === 'list') node.children.forEach((item, itemIndex) => item.children.forEach((child, childIndex) => inline(child.children, `${path}.children[${itemIndex}].children[${childIndex}].children`)));
+    else if (node.type === 'codeBlock') { allowed(node, ['type','code','language'], path); meaningful ||= typeof node.code === 'string' && node.code.trim().length > 0; if (typeof node.code !== 'string') issue('invalid_code', `${path}.code`, 'Code must be a string.'); }
+    else if (node.type === 'divider') { allowed(node, ['type'], path); meaningful = true; }
+    else issue('unsupported_node', `${path}.type`, 'Unsupported block node.');
   });
+  if (template.document.children.length === 0 || !meaningful) issue('empty_document', '$.document.children', 'Template must contain meaningful content.');
+  if (count > 200) issue('node_limit', '$.document', 'Template exceeds 200 nodes.');
+  if (JSON.stringify(template).length > 100_000) issue('size_limit', '$', 'Template is too large.');
   return { valid: errors.length === 0, errors, warnings };
 };
 

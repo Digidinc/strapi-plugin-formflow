@@ -31,7 +31,7 @@ test('Telegram admin routes use explicit settings and form-update RBAC actions',
 });
 
 test('public routes expose no Telegram API', () => {
-  assert.equal(JSON.stringify(publicRoutes).includes('telegram'), false);
+  assert.equal(JSON.stringify(publicRoutes).includes('telegramNotification'), false);
 });
 
 const context = (body: unknown = {}, params: Record<string, string> = {}) => ({
@@ -71,12 +71,12 @@ test('form Telegram validation rejects stale connections and permits disabling p
     ? { can: () => true, resolution: () => 'resolved' }
     : { listConnections: async () => [{ id: 'known', active: true }] } }) } as any;
   const template = { version: 1, document: { type: 'document', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'Hi' }] }] } };
-  const invalid = await validateTelegramFormSettings(strapi, [], { telegram: {
+  const invalid = await validateTelegramFormSettings(strapi, [], { telegramNotification: {
     enabled: true, connectionId: 'missing', destination: '@channel', template,
   } });
   assert.equal(invalid?.status, 400);
   assert.match(invalid?.message ?? '', /connection/i);
-  const disabled = await validateTelegramFormSettings(strapi, [], { telegram: {
+  const disabled = await validateTelegramFormSettings(strapi, [], { telegramNotification: {
     enabled: false, connectionId: 'missing', destination: 'bad destination', template: { broken: true },
   } });
   assert.equal(disabled, null);
@@ -87,7 +87,7 @@ test('updating fields revalidates an already-enabled saved Telegram template', a
   const template = { version: 1, document: { type: 'document', children: [{ type: 'paragraph', children: [{ type: 'formField', fieldId: 'old', fallback: '-' }] }] } };
   const strapi = {
     documents: () => ({
-      findOne: async () => ({ fields: [{ id: 'old', type: 'text', name: 'old', label: 'Old' }], settings: { telegram: { enabled: true, connectionId: 'known', destination: '@channel', template } } }),
+      findOne: async () => ({ fields: [{ id: 'old', type: 'text', name: 'old', label: 'Old' }], settings: { telegramNotification: { enabled: true, connectionId: 'known', destination: '@channel', template } } }),
       update: async () => { updated = true; },
     }),
     plugin: () => ({ service: (name: string) => name === 'license' ? { can: () => true } : { listConnections: async () => [{ id: 'known', active: true }] } }),
@@ -101,13 +101,13 @@ test('disabling with only enabled false preserves saved Telegram configuration',
   const telegram = { enabled: true, connectionId: 'known', destination: '@channel', template: { version: 1 } };
   const strapi = {
     documents: () => ({
-      findOne: async () => ({ fields: [], settings: { submitButtonText: 'Send', telegram } }),
+      findOne: async () => ({ fields: [], settings: { submitButtonText: 'Send', telegramNotification: telegram } }),
       update: async (input: any) => { saved = input.data; return input.data; },
     }),
     plugin: () => ({ service: () => ({}) }),
   } as any;
-  await formService({ strapi }).update('form', { settings: { telegram: { enabled: false } as any } });
-  assert.deepEqual(saved.settings.telegram, { ...telegram, enabled: false });
+  await formService({ strapi }).update('form', { settings: { telegramNotification: { enabled: false } as any } });
+  assert.deepEqual(saved.settings.telegramNotification, { ...telegram, enabled: false });
   assert.equal(saved.settings.submitButtonText, 'Send');
 });
 

@@ -201,7 +201,7 @@ export interface SubmittableForm {
       headers?: Record<string, string>;
       events?: Array<'submission.created' | 'submission.updated'>;
     }>;
-    telegram?: {
+    telegramNotification?: {
       enabled: boolean;
       connectionId: string;
       destination: string;
@@ -463,9 +463,9 @@ const submissionService = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     // Dispatch only for this persisted final creation. The boundary owns its
     // terminal rejection handler, so Telegram can never change public success.
-    if (form.settings?.telegram?.enabled) {
+    if (form.settings?.telegramNotification?.enabled) {
       try {
-        strapi.plugin('formflow').service('telegram').dispatchForSubmission(form, submission);
+        strapi.plugin('formflow').service('telegramNotification').dispatchForSubmission(form, submission);
       } catch {
         strapi.log.error('Telegram delivery failed', { failure: 'configuration' });
       }

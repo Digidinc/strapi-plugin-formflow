@@ -18,10 +18,10 @@ export const createTelegramService = (
     ...connection,
     ...delivery,
     dispatchForSubmission(
-      form: { fields?: unknown[]; settings?: { telegram?: TelegramNotificationSettings } },
+      form: { fields?: unknown[]; settings?: { telegramNotification?: TelegramNotificationSettings } },
       submission: { data?: Record<string, unknown> }
     ): void {
-      const settings = form.settings?.telegram;
+      const settings = form.settings?.telegramNotification;
       if (!settings?.enabled) return;
       const rendered = renderTelegramTemplate(settings.template, (form.fields ?? []) as any, submission.data ?? {});
       if (rendered.errors.length) {

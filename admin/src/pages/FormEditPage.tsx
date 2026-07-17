@@ -779,6 +779,7 @@ export const FormEditPage = () => {
                     value={formData.settings.telegramNotification}
                     fields={formData.fields}
                     formId={form?.documentId ?? ''}
+                    formTitle={formData.title}
                     onChange={(telegramNotification) =>
                       updateField('settings', { ...formData.settings, telegramNotification })
                     }

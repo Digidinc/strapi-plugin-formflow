@@ -16,7 +16,8 @@ const fields = [
 ];
 
 test('default document references fields by stable ID with dash fallbacks', () => {
-  const document = createDefaultTelegramDocument(fields);
+  const document = createDefaultTelegramDocument(fields, 'Contact us');
+  assert.match(JSON.stringify(document), /New Contact us submission/);
   const json = JSON.stringify(document);
   assert.match(json, /"fieldId":"email-id","fallback":"-"/);
   assert.doesNotMatch(json, /"fieldId":"email"/);
@@ -54,4 +55,13 @@ test('preview escapes text and samples before applying Telegram-safe markup', ()
   assert.match(html, /<b>&lt;script&gt;<\/b>/);
   assert.match(html, /&lt;me@example\.com&gt;/);
   assert.doesNotMatch(html, /<script>/);
+});
+
+test('admin validation rejects malformed server-contract nodes', () => {
+  const invalid = { version: 2, document: { type: 'document', children: [] }, privateState: true } as any;
+  assert.equal(validateTelegramDocument(invalid, []).valid, false);
+  const badMark = { version: 1, document: { type: 'document', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'x', marks: ['rainbow'], private: true }] }] } } as any;
+  const result = validateTelegramDocument(badMark, []);
+  assert.equal(result.errors.some((item) => item.code === 'unsupported_mark'), true);
+  assert.equal(result.errors.some((item) => item.code === 'unknown_property'), true);
 });

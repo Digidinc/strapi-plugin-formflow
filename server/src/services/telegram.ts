@@ -22,7 +22,7 @@ export async function countTelegramConnectionReferences(strapi: Core.Strapi, id:
   return forms.reduce((total, form) => {
     const settings = form.settings;
     if (typeof settings !== 'object' || settings === null) return total;
-    const telegram = (settings as { telegram?: unknown }).telegram;
+    const telegram = (settings as { telegramNotification?: unknown }).telegramNotification;
     return typeof telegram === 'object' && telegram !== null &&
       (telegram as { connectionId?: unknown }).connectionId === id ? total + 1 : total;
   }, 0);

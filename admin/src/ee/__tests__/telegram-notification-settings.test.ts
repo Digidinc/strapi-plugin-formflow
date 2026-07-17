@@ -30,4 +30,9 @@ test('editor source uses the focused Lexical plugins and never persists private 
   for (const plugin of ['LexicalComposer', 'RichTextPlugin', 'HistoryPlugin', 'ListPlugin', 'LinkPlugin']) assert.match(source, new RegExp(plugin));
   assert.doesNotMatch(source, /editorState\.toJSON\(\)/);
   assert.doesNotMatch(source, /dangerouslySetInnerHTML/);
+  assert.match(source, /export const importTelegramAstIntoLexical/);
+  assert.match(source, /export const exportLexicalToTelegramAst/);
+  assert.match(source, /formflow-external-sync/);
+  assert.match(source, /item\.children\.forEach/);
+  assert.match(source, /node\.getChildren\(\)\.map/);
 });
