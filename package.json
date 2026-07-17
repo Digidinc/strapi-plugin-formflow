@@ -62,6 +62,14 @@
     "release": "changeset publish"
   },
   "dependencies": {
+    "@lexical/code": "0.47.0",
+    "@lexical/history": "0.47.0",
+    "@lexical/link": "0.47.0",
+    "@lexical/list": "0.47.0",
+    "@lexical/react": "0.47.0",
+    "@lexical/rich-text": "0.47.0",
+    "@lexical/utils": "0.47.0",
+    "lexical": "0.47.0",
     "pdfkit": "^0.15.0",
     "uuid": "^13.0.0",
     "xlsx": "^0.18.5"

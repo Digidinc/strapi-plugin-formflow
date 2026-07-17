@@ -41,6 +41,7 @@ import { FormSettings } from '../components/FormSettings';
 import { EmailSettings } from '../components/FormSettings/EmailSettings';
 import { WebhookSettings } from '../components/FormSettings/WebhookSettings';
 import { IntegrationsSettings } from '../components/FormSettings/IntegrationsSettings';
+import { TelegramNotificationSettings } from '../ee/components/TelegramNotificationSettings';
 import { LocalesEditor } from '../components/FormSettings/LocalesEditor';
 import { PLUGIN_ID } from '../pluginId';
 import type {
@@ -770,6 +771,17 @@ export const FormEditPage = () => {
                       updateField('settings', { ...formData.settings, webhooks })
                     }
                     formId={form?.documentId ?? ''}
+                  />
+                </Box>
+
+                <Box padding={6} background="neutral0" hasRadius shadow="tableShadow">
+                  <TelegramNotificationSettings
+                    value={formData.settings.telegramNotification}
+                    fields={formData.fields}
+                    formId={form?.documentId ?? ''}
+                    onChange={(telegramNotification) =>
+                      updateField('settings', { ...formData.settings, telegramNotification })
+                    }
                   />
                 </Box>
               </Flex>

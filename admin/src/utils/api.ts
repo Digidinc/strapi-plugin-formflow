@@ -69,6 +69,26 @@ export interface TelegramConnectionResponse {
   referenceCount: number;
 }
 
+export type TelegramTemplateMark = 'bold' | 'italic' | 'underline' | 'strikethrough' | 'code';
+export type TelegramTemplateInline =
+  | { type: 'text'; text: string; marks?: TelegramTemplateMark[] }
+  | { type: 'formField'; fieldId: string; fallback: '-' }
+  | { type: 'link'; url: string; children: Array<{ type: 'text'; text: string; marks?: TelegramTemplateMark[] } | { type: 'formField'; fieldId: string; fallback: '-' }> };
+export type TelegramTemplateBlock =
+  | { type: 'paragraph'; children: TelegramTemplateInline[] }
+  | { type: 'heading'; level: 1 | 2 | 3; children: TelegramTemplateInline[] }
+  | { type: 'blockquote'; children: Array<{ type: 'paragraph'; children: TelegramTemplateInline[] }> }
+  | { type: 'codeBlock'; code: string; language?: string }
+  | { type: 'list'; style: 'ordered' | 'unordered'; children: Array<{ type: 'listItem'; children: Array<{ type: 'paragraph'; children: TelegramTemplateInline[] }> }> }
+  | { type: 'divider' };
+export interface TelegramTemplateDocument { version: 1; document: { type: 'document'; children: TelegramTemplateBlock[] } }
+export interface TelegramNotificationSettings {
+  enabled: boolean;
+  connectionId: string;
+  destination: string;
+  template: TelegramTemplateDocument;
+}
+
 export type TelegramCreateCredentialRequest =
   | { type: 'stored'; token: string }
   | { type: 'environment'; variableName: string };
@@ -638,6 +658,7 @@ export interface FormSettings {
   rateLimit?: RateLimitConfig;
   customCss?: string;
   integrations?: IntegrationConfig[];
+  telegramNotification?: TelegramNotificationSettings;
 }
 
 /**
