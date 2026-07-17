@@ -53,15 +53,37 @@ test('malicious AST and destination data cannot alter the Bot API URL or method'
   assert.equal(renderTelegramTemplate(malicious, [], {}).valid, false);
 
   const calls: any[] = [];
+  const logs: unknown[][] = [];
+  const token = 'fixed-token-sensitive';
+  const renderedMessage = '<b>private submission value</b>';
+  const rawDescription = 'Bad Request: chat not found fixed-token-sensitive private submission value';
   const delivery = createTelegramDeliveryService({
-    resolveCredential: async () => 'fixed-token', logger: { error() {} },
-    fetch: async (...args: any[]) => { calls.push(args); return { ok: true, status: 200, body: body({ ok: true }) } as any; },
+    resolveCredential: async () => token,
+    logger: { error: (...arguments_: unknown[]) => { logs.push(arguments_); } },
+    fetch: async (...args: any[]) => {
+      calls.push(args);
+      return { ok: false, status: 400, body: body({ ok: false, error_code: 400, description: rawDescription }) } as any;
+    },
   });
   const destination = 'chat-id/../../setWebhook?url=https://attacker.invalid';
-  await delivery.sendRichNotification({ connectionId: 'connection-id', destination, html: '<b>safe</b>' });
-  assert.equal(calls[0][0], 'https://api.telegram.org/botfixed-token/sendRichMessage');
+  await delivery.sendRichNotification({ connectionId: 'connection-id', destination, html: renderedMessage });
+  const endpoint = `https://api.telegram.org/bot${token}/sendRichMessage`;
+  assert.equal(calls[0][0], endpoint);
   assert.equal(calls[0][1].method, 'POST');
   assert.equal(JSON.parse(calls[0][1].body).chat_id, destination);
+  assert.ok(logs.length > 0, 'the real delivery failure must exercise the structured logger');
+  for (const entry of logs) {
+    for (const argument of entry) {
+      const serializedArgument = typeof argument === 'string' ? argument : JSON.stringify(argument);
+      assert.doesNotMatch(serializedArgument, new RegExp([
+        token, endpoint, destination, renderedMessage, rawDescription,
+      ].map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')));
+    }
+  }
+  const serializedLogs = JSON.stringify(logs);
+  for (const forbidden of [token, endpoint, destination, renderedMessage, rawDescription]) {
+    assert.equal(serializedLogs.includes(forbidden), false, `logs must exclude ${forbidden}`);
+  }
 });
 
 test('deleting a form leaves global Telegram connections intact', async () => {
