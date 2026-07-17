@@ -4,6 +4,7 @@
 
 ### Patch Changes
 
+- Add Pro Telegram notifications using a customer-owned bot, safe rich templates, one-attempt asynchronous delivery, credential protection, security regressions, and setup documentation. FormFlow remains outbound-only and never manages bot webhooks or updates.
 - 848a808: Allow additional time for the initial Lemon Squeezy activation request while retaining the shorter validation timeout.
 - 25c173e: Add a public, license-independent endpoint for headless renderers to record a form start without affecting form interaction.
 
