@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import telegramService, { countTelegramConnectionReferences } from '../telegram';
+import telegramService, { countTelegramConnectionReferences, logTelegramLoadFailure } from '../telegram';
 
 test('counts form settings that reference a stable Telegram connection ID', async () => {
   const seen: unknown[] = [];
@@ -49,4 +49,12 @@ test('MIT boundary contains asynchronous EE dispatch rejection and returns immed
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.ok(errors.length > 0);
   assert.doesNotMatch(JSON.stringify(errors), /SECRET|store failure/);
+});
+
+test('EE load failures emit only a fixed sanitized initialization diagnostic', () => {
+  const errors: unknown[][] = [];
+  logTelegramLoadFailure({ error: (...args: unknown[]) => errors.push(args) } as any,
+    new Error('SECRET_TOKEN /private/plugin/path raw module cause'));
+  assert.deepEqual(errors, [['Telegram integration failed to initialize.']]);
+  assert.doesNotMatch(JSON.stringify(errors), /SECRET_TOKEN|private|plugin\/path|raw module cause/i);
 });

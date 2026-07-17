@@ -23,7 +23,12 @@ export const createTelegramService = (
     ): void {
       const settings = form.settings?.telegramNotification;
       if (!settings?.enabled) return;
-      const rendered = renderTelegramTemplate(settings.template, (form.fields ?? []) as any, submission.data ?? {});
+      const fields = (form.fields ?? []) as Array<{ id: string; name: string }>;
+      const dataByFieldId = Object.fromEntries(fields.map((field) => [
+        field.id,
+        (submission.data ?? {})[field.name],
+      ]));
+      const rendered = renderTelegramTemplate(settings.template, fields as any, dataByFieldId);
       if (rendered.errors.length) {
         dependencies.logger?.error('Telegram delivery failed', { failure: 'template' });
         return;

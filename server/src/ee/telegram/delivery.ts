@@ -23,8 +23,7 @@ export interface TelegramDeliveryInput {
 export interface TelegramDeliveryDependencies {
   resolveCredential(id: string): Promise<string>;
   fetch(input: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }): Promise<FetchResponse>;
-  /** Explicit null means this Bot API method is unavailable in the active client. */
-  sendRichMessage?: ((token: string, input: TelegramDeliveryInput, signal: AbortSignal) => Promise<FetchResponse>) | null;
+  sendRichMessage?: (token: string, input: TelegramDeliveryInput, signal: AbortSignal) => Promise<FetchResponse>;
   logger: { error(message: string, metadata: Record<string, unknown>): void };
   timeoutMs?: number;
 }
@@ -101,7 +100,10 @@ export function createTelegramDeliveryService(dependencies: TelegramDeliveryDepe
             : await dependencies.fetch(`https://api.telegram.org/bot${token}/sendRichMessage`, {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ chat_id: input.destination, message: { html: input.html } }),
+              body: JSON.stringify({
+                chat_id: input.destination,
+                rich_message: { html: input.html, skip_entity_detection: true },
+              }),
               signal: controller.signal,
             });
           return { response, body: await readBounded(response) };

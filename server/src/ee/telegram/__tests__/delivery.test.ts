@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { createTelegramDeliveryService } from '../delivery';
@@ -30,12 +31,21 @@ const make = (fetchImpl: any, sendRichMessage?: any, timeoutMs = 10_000) => {
   };
 };
 
+test('delivery dependency contract does not advertise nullable client semantics', () => {
+  const source = readFileSync('server/src/ee/telegram/delivery.ts', 'utf8');
+  assert.doesNotMatch(source, /sendRichMessage\?[^;]+\| null/);
+  assert.doesNotMatch(source, /Explicit null/);
+});
+
 test('sends the bounded rich-message request and returns success', async () => {
   let call: any;
   const { service } = make(async (...args: any[]) => { call = args; return response(200, '{"ok":true,"result":{"message_id":42}}'); });
   assert.deepEqual(await service.sendRichNotification({ connectionId: 'c1', destination: 'chat', html: '<b>Hi</b>' }), { ok: true, messageId: 42 });
   assert.match(call[0], /^https:\/\/api\.telegram\.org\/botSECRET_TOKEN\/sendRichMessage$/);
-  assert.deepEqual(JSON.parse(call[1].body), { chat_id: 'chat', message: { html: '<b>Hi</b>' } });
+  assert.deepEqual(JSON.parse(call[1].body), {
+    chat_id: 'chat',
+    rich_message: { html: '<b>Hi</b>', skip_entity_detection: true },
+  });
   assert.equal(call[1].method, 'POST');
 });
 

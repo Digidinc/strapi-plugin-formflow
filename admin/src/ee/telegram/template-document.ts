@@ -105,11 +105,16 @@ export const previewTelegramDocument = (template: TelegramTemplateDocument, fiel
   };
   const para = (node: TelegramParagraphNode | Extract<TelegramTemplateNode, { type: 'heading' }>) => node.children.map(renderInline).join('');
   return template.document.children.map((node) => {
-    if (node.type === 'paragraph') return `${para(node)}\n`;
-    if (node.type === 'heading') return `<b>${para(node)}</b>\n`;
-    if (node.type === 'blockquote') return `<blockquote>${node.children.map(para).join('\n')}</blockquote>\n`;
-    if (node.type === 'codeBlock') return `<pre>${escapeHtml(node.code)}</pre>\n`;
-    if (node.type === 'divider') return '──────────\n';
-    return node.children.map((item, index) => `${node.style === 'ordered' ? `${index + 1}.` : '•'} ${item.children.map(para).join(' ')}`).join('\n');
-  }).join('').trim();
+    if (node.type === 'paragraph') return `<p>${para(node)}</p>`;
+    if (node.type === 'heading') return `<h${node.level}>${para(node)}</h${node.level}>`;
+    if (node.type === 'blockquote') return `<blockquote>${node.children.map((child) => `<p>${para(child)}</p>`).join('\n')}</blockquote>`;
+    if (node.type === 'codeBlock') {
+      const language = node.language ? ` class="language-${escapeHtml(node.language)}"` : '';
+      return `<pre><code${language}>${escapeHtml(node.code)}</code></pre>`;
+    }
+    if (node.type === 'divider') return '<hr/>';
+    const tag = node.style === 'ordered' ? 'ol' : 'ul';
+    const items = node.children.map((item) => `<li>${item.children.map((child) => `<p>${para(child)}</p>`).join('')}</li>`).join('');
+    return `<${tag}>${items}</${tag}>`;
+  }).join('\n');
 };

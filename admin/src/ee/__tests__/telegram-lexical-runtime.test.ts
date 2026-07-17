@@ -67,7 +67,12 @@ test('runtime toolbar preserves multi-paragraph quote boundaries when converting
     { type: 'text', text: 'quote one\nquote two' },
   ] }]);
   editor.update(() => importTelegramAstIntoLexical(converted), { discrete: true });
-  editor.getEditorState().read(() => assert.deepEqual(exportLexicalToTelegramAst(), converted));
+  editor.getEditorState().read(() => {
+    assert.equal($getRoot().getTextContent(), 'quote one\nquote two');
+    assert.deepEqual(exportLexicalToTelegramAst().document.children, [{ type: 'paragraph', children: [
+      { type: 'text', text: 'quote one' }, { type: 'text', text: '\n' }, { type: 'text', text: 'quote two' },
+    ] }]);
+  });
 });
 
 test('runtime toolbar preserves list item boundaries when converting list to paragraph', () => {
@@ -89,5 +94,38 @@ test('runtime toolbar preserves list item boundaries when converting list to par
     assert.equal($getRoot().getTextContent(), 'first\nsecond');
   });
   editor.update(() => importTelegramAstIntoLexical(converted), { discrete: true });
-  editor.getEditorState().read(() => assert.deepEqual(exportLexicalToTelegramAst(), converted));
+  editor.getEditorState().read(() => {
+    assert.equal($getRoot().getTextContent(), 'first\nsecond');
+    assert.deepEqual(exportLexicalToTelegramAst().document.children, [{ type: 'paragraph', children: [
+      { type: 'text', text: 'first' }, { type: 'text', text: '\n' }, { type: 'text', text: 'second' },
+    ] }]);
+  });
+});
+
+test('runtime import and export preserve visible soft line breaks as Lexical linebreak nodes', () => {
+  const document: TelegramTemplateDocument = { version: 1, document: { type: 'document', children: [
+    { type: 'paragraph', children: [{ type: 'text', text: 'Line one\nLine two' }] },
+  ] } };
+  const editor = createEditor({ namespace: 'linebreak-roundtrip-test', nodes: telegramEditorNodes, onError(error) { throw error; } });
+  editor.update(() => importTelegramAstIntoLexical(document), { discrete: true });
+  let exported!: TelegramTemplateDocument;
+  editor.getEditorState().read(() => {
+    assert.deepEqual(($getRoot().getFirstChildOrThrow() as any).getChildren().map((node: any) => node.getType()), [
+      'text', 'linebreak', 'text',
+    ]);
+    assert.equal($getRoot().getTextContent(), 'Line one\nLine two');
+    exported = exportLexicalToTelegramAst();
+  });
+  assert.deepEqual(exported.document.children, [{ type: 'paragraph', children: [
+    { type: 'text', text: 'Line one' },
+    { type: 'text', text: '\n' },
+    { type: 'text', text: 'Line two' },
+  ] }]);
+  editor.update(() => importTelegramAstIntoLexical(exported), { discrete: true });
+  editor.getEditorState().read(() => {
+    assert.deepEqual(($getRoot().getFirstChildOrThrow() as any).getChildren().map((node: any) => node.getType()), [
+      'text', 'linebreak', 'text',
+    ]);
+    assert.equal($getRoot().getTextContent(), 'Line one\nLine two');
+  });
 });

@@ -35,9 +35,11 @@ test('compiles every approved block and inline mark to Telegram HTML', () => {
     {}
   );
   assert.equal(result.errors.length, 0);
-  assert.match(result.html, /^<b><code><s><u><i><b>Alert<\/b><\/i><\/u><\/s><\/code><\/b>/);
-  assert.match(result.html, /<a href="https:\/\/example\.com\/\?a=1&amp;b=2">Open<\/a>/);
-  assert.match(result.html, /<blockquote>Quoted<\/blockquote>$/);
+  assert.equal(result.html,
+    '<h2><code><s><u><i><b>Alert</b></i></u></s></code></h2>\n' +
+    '<p><a href="https://example.com/?a=1&amp;b=2">Open</a></p>\n' +
+    '<blockquote><p>Quoted</p></blockquote>'
+  );
 });
 
 test('compiles code blocks, ordered and unordered lists, and dividers', () => {
@@ -54,10 +56,12 @@ test('compiles code blocks, ordered and unordered lists, and dividers', () => {
     ] },
   ]), fields, { email: '<person@example.com>' });
   assert.equal(result.errors.length, 0);
-  assert.match(result.html, /<pre><code class="language-sh">&lt;deploy&gt;&amp;\nnext<\/code><\/pre>/);
-  assert.match(result.html, /• First\n• &lt;person@example\.com&gt;/);
-  assert.match(result.html, /────────/);
-  assert.match(result.html, /1\. One\n2\. Two/);
+  assert.equal(result.html,
+    '<pre><code class="language-sh">&lt;deploy&gt;&amp;\nnext</code></pre>\n' +
+    '<ul><li><p>First</p></li><li><p>&lt;person@example.com&gt;</p></li></ul>\n' +
+    '<hr/>\n' +
+    '<ol><li><p>One</p></li><li><p>Two</p></li></ol>'
+  );
 });
 
 test('escapes hostile submitted values and uses fallback for empty values', () => {
@@ -68,7 +72,7 @@ test('escapes hostile submitted values and uses fallback for empty values', () =
   const result = renderTelegramTemplate(template, fields, {
     email: '<a href="tg://user?id=1">& attack</a>', secret: '',
   });
-  assert.equal(result.html, '&lt;a href=&quot;tg://user?id=1&quot;&gt;&amp; attack&lt;/a&gt; / -');
+  assert.equal(result.html, '<p>&lt;a href=&quot;tg://user?id=1&quot;&gt;&amp; attack&lt;/a&gt; / -</p>');
   assert.deepEqual(result.warnings.map((warning) => warning.code), ['sensitive_field']);
 });
 

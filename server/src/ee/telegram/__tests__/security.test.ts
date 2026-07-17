@@ -70,7 +70,10 @@ test('malicious AST and destination data cannot alter the Bot API URL or method'
   const endpoint = `https://api.telegram.org/bot${token}/sendRichMessage`;
   assert.equal(calls[0][0], endpoint);
   assert.equal(calls[0][1].method, 'POST');
-  assert.equal(JSON.parse(calls[0][1].body).chat_id, destination);
+  assert.deepEqual(JSON.parse(calls[0][1].body), {
+    chat_id: destination,
+    rich_message: { html: renderedMessage, skip_entity_detection: true },
+  });
   assert.ok(logs.length > 0, 'the real delivery failure must exercise the structured logger');
   for (const entry of logs) {
     for (const argument of entry) {
@@ -84,6 +87,32 @@ test('malicious AST and destination data cannot alter the Bot API URL or method'
   for (const forbidden of [token, endpoint, destination, renderedMessage, rawDescription]) {
     assert.equal(serializedLogs.includes(forbidden), false, `logs must exclude ${forbidden}`);
   }
+});
+
+test('automatic entity detection is disabled without removing explicit authored links', async () => {
+  const template = { version: 1, document: { type: 'document', children: [{
+    type: 'paragraph', children: [
+      { type: 'text', text: '@plain https://untrusted.invalid ' },
+      { type: 'link', url: 'https://trusted.example/path', children: [{ type: 'text', text: 'Trusted' }] },
+    ],
+  }] } } as any;
+  const rendered = renderTelegramTemplate(template, [], {});
+  assert.equal(rendered.valid, true);
+  assert.match(rendered.html, /<a href="https:\/\/trusted\.example\/path">Trusted<\/a>/);
+
+  let requestBody: unknown;
+  const delivery = createTelegramDeliveryService({
+    resolveCredential: async () => 'fixed-token', logger: { error() {} },
+    fetch: async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return { ok: true, status: 200, body: body({ ok: true }) };
+    },
+  });
+  await delivery.sendRichNotification({ connectionId: 'connection-id', destination: '@channelname', html: rendered.html });
+  assert.deepEqual(requestBody, {
+    chat_id: '@channelname',
+    rich_message: { html: rendered.html, skip_entity_detection: true },
+  });
 });
 
 test('deleting a form leaves global Telegram connections intact', async () => {

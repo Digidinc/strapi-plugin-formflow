@@ -362,18 +362,19 @@ export function renderTelegramTemplate(
   };
   const renderBlock = (node: TelegramTemplateNode): string => {
     switch (node.type) {
-      case 'paragraph': return node.children.map(renderInline).join('');
-      case 'heading': return `<b>${node.children.map(renderInline).join('')}</b>`;
+      case 'paragraph': return `<p>${node.children.map(renderInline).join('')}</p>`;
+      case 'heading': return `<h${node.level}>${node.children.map(renderInline).join('')}</h${node.level}>`;
       case 'blockquote': return `<blockquote>${node.children.map(renderBlock).join('\n')}</blockquote>`;
       case 'codeBlock': {
         const language = node.language ? ` class="language-${escapeHtml(node.language)}"` : '';
         return `<pre><code${language}>${escapeHtml(node.code)}</code></pre>`;
       }
-      case 'list': return node.children.map((item, index) => {
-        const marker = node.style === 'ordered' ? `${index + 1}.` : '•';
-        return `${marker} ${item.children.map(renderBlock).join('\n')}`;
-      }).join('\n');
-      case 'divider': return '────────';
+      case 'list': {
+        const tag = node.style === 'ordered' ? 'ol' : 'ul';
+        const items = node.children.map((item) => `<li>${item.children.map(renderBlock).join('')}</li>`).join('');
+        return `<${tag}>${items}</${tag}>`;
+      }
+      case 'divider': return '<hr/>';
     }
   };
   const html = template.document.children.map(renderBlock).join('\n');

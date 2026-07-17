@@ -16,7 +16,8 @@ import {
   $createHeadingNode, $createQuoteNode, HeadingNode, QuoteNode,
 } from '@lexical/rich-text';
 import {
-  $createParagraphNode, $createTextNode, $getRoot, $getSelection, $isElementNode,
+  $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getSelection, $isElementNode,
+  $isLineBreakNode,
   $isRangeSelection, COMMAND_PRIORITY_EDITOR, DecoratorNode, FORMAT_TEXT_COMMAND,
   REDO_COMMAND, UNDO_COMMAND, type EditorConfig, type LexicalEditor, type LexicalNode,
   type NodeKey, type SerializedLexicalNode, type Spread,
@@ -63,7 +64,14 @@ class TelegramParagraphBreakNode extends DecoratorNode<JSX.Element> {
 }
 
 const appendInline = (parent: ReturnType<typeof $createParagraphNode>, children: any[], labels = new Map<string, string>()) => children.forEach((child) => {
-  if (child.type === 'text') { const text = $createTextNode(child.text); for (const mark of child.marks ?? []) text.toggleFormat(mark === 'strikethrough' ? 'strikethrough' : mark); parent.append(text); }
+  if (child.type === 'text') child.text.split('\n').forEach((value: string, index: number, lines: string[]) => {
+    if (value) {
+      const text = $createTextNode(value);
+      for (const mark of child.marks ?? []) text.toggleFormat(mark === 'strikethrough' ? 'strikethrough' : mark);
+      parent.append(text);
+    }
+    if (index < lines.length - 1) parent.append($createLineBreakNode());
+  });
   else if (child.type === 'formField') parent.append(new TelegramVariableNode(child.fieldId, labels.get(child.fieldId)));
   else { const link = $createLinkNode(child.url); appendInline(link as any, child.children, labels); parent.append(link); }
 });
@@ -87,6 +95,7 @@ const marksOf = (node: any) => (['bold', 'italic', 'underline', 'strikethrough',
 const inlineFrom = (element: any): any[] => element.getChildren().flatMap((node: any) => {
   if (node instanceof TelegramVariableNode) return [{ type: 'formField', fieldId: node.__fieldId, fallback: '-' }];
   if (node instanceof LinkNode) return [{ type: 'link', url: node.getURL(), children: inlineFrom(node) }];
+  if ($isLineBreakNode(node)) return [{ type: 'text', text: '\n' }];
   if (node.getType() === 'text') { const marks = marksOf(node); return [{ type: 'text', text: node.getTextContent(), ...(marks.length ? { marks } : {}) }]; }
   return $isElementNode(node) ? inlineFrom(node) : [];
 });

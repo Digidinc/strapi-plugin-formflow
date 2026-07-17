@@ -15,6 +15,13 @@ interface EeTelegramService extends TelegramService {}
 
 const unavailable = () => new Error('Telegram connections are unavailable in this build.');
 
+export function logTelegramLoadFailure(
+  logger: { error(message: string): unknown },
+  _cause: unknown
+): void {
+  logger.error('Telegram integration failed to initialize.');
+}
+
 export async function countTelegramConnectionReferences(strapi: Core.Strapi, id: string): Promise<number> {
   const forms = await strapi.documents('plugin::formflow.form').findMany({
     fields: ['settings'], status: 'draft', limit: -1,
@@ -47,8 +54,9 @@ const telegramService = ({ strapi }: { strapi: Core.Strapi }): TelegramService =
           referenceCount: (id: string) => countTelegramConnectionReferences(strapi, id),
           logger: strapi.log,
         }) as EeTelegramService;
-      } catch {
+      } catch (error) {
         implementation = null;
+        logTelegramLoadFailure(strapi.log, error);
       }
     })();
     return loading;

@@ -60,9 +60,24 @@ test('unsafe links are rejected', () => {
 test('preview escapes text and samples before applying Telegram-safe markup', () => {
   const document = { version: 1 as const, document: { type: 'document' as const, children: [{ type: 'paragraph' as const, children: [{ type: 'text' as const, text: '<script>', marks: ['bold' as const] }, { type: 'formField' as const, fieldId: 'email-id', fallback: '-' as const }] }] } };
   const html = previewTelegramDocument(document, fields, { 'email-id': '<me@example.com>' });
+  assert.match(html, /^<p>/);
   assert.match(html, /<b>&lt;script&gt;<\/b>/);
   assert.match(html, /&lt;me@example\.com&gt;/);
   assert.doesNotMatch(html, /<script>/);
+});
+
+test('preview uses the same native rich block tags as delivery compilation', () => {
+  const document = { version: 1 as const, document: { type: 'document' as const, children: [
+    { type: 'heading' as const, level: 3 as const, children: [{ type: 'text' as const, text: 'Heading' }] },
+    { type: 'paragraph' as const, children: [{ type: 'text' as const, text: 'Paragraph' }] },
+    { type: 'list' as const, style: 'unordered' as const, children: [{ type: 'listItem' as const, children: [
+      { type: 'paragraph' as const, children: [{ type: 'text' as const, text: 'Item' }] },
+    ] }] },
+    { type: 'divider' as const },
+  ] } };
+  assert.equal(previewTelegramDocument(document, []),
+    '<h3>Heading</h3>\n<p>Paragraph</p>\n<ul><li><p>Item</p></li></ul>\n<hr/>'
+  );
 });
 
 test('admin validation rejects malformed server-contract nodes', () => {

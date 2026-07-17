@@ -108,6 +108,39 @@ test('enforces current integration entitlement and active connection quantity be
   assert.equal(requests, 1);
 });
 
+test('production dispatch remaps persisted field names to stable template field IDs', async () => {
+  let requestBody: any;
+  const stored = { version: 1, connections: [{
+    id: 'connection-1', name: 'Bot', tokenSource: { type: 'environment', variableName: 'BOT_TOKEN' },
+    bot: { id: 'bot-1', displayName: 'Bot' }, createdAt: 'now', updatedAt: 'now',
+  }] };
+  const service = createTelegramService({
+    store: { get: async () => stored, set: async () => undefined },
+    environment: { BOT_TOKEN: 'token' },
+    license: { limit: () => 1, can: () => true },
+    fetch: async (_url, init) => {
+      requestBody = JSON.parse((init as any).body);
+      return { ok: true, status: 200, json: async () => ({ ok: true }), body: responseBody('{"ok":true}') } as any;
+    },
+    logger: { error() {} },
+  });
+  service.dispatchForSubmission({
+    fields: [{ id: 'stable-email-id', name: 'email', type: 'email', label: 'Email' }],
+    settings: { telegramNotification: {
+      enabled: true, connectionId: 'connection-1' as any, destination: 'chat-1',
+      template: { version: 1, document: { type: 'document', children: [{
+        type: 'paragraph', children: [
+          { type: 'text', text: 'Email: ' },
+          { type: 'formField', fieldId: 'stable-email-id', fallback: '-' },
+        ],
+      }] } },
+    } },
+  }, { data: { email: 'actual@example.com' } });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.match(requestBody.rich_message.html, /actual@example\.com/);
+  assert.doesNotMatch(requestBody.rich_message.html, /Email: -/);
+});
+
 const responseBody = (body: string) => ({ getReader() { let done = false; return {
   async read() { if (done) return { done: true }; done = true; return { done: false, value: new TextEncoder().encode(body) }; },
   async cancel() {},
