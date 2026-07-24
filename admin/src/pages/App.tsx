@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type PropsWithChildren } from 'react';
 import { Page } from '@strapi/strapi/admin';
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 
@@ -37,57 +37,61 @@ const AnalyticsRoute = () => {
   );
 };
 
-const App = () => {
-  return (
-    <LicenseProvider>
-      <LicenseStatusNotice />
-      <Routes>
-        <Route
-          path="settings"
-          element={
-            <Page.Protect permissions={PERMISSIONS.settings.read}>
-              <Suspense fallback={null}>
-                <SettingsPage />
-              </Suspense>
-            </Page.Protect>
-          }
-        />
-        <Route path="*" element={<Page.Protect permissions={PERMISSIONS.main}><MainRoutes /></Page.Protect>} />
-      </Routes>
-    </LicenseProvider>
-  );
-};
-
-const MainRoutes = () => (
-        <Routes>
-          {/* Forms */}
-          <Route index element={<FormsListPage />} />
-          <Route path="forms" element={<FormsListPage />} />
-          <Route path="forms/create" element={<FormEditPage />} />
-          <Route path="forms/:id/edit" element={<FormEditPage />} />
-          {/* Bare form route -> redirect to the editor (avoids the error page) */}
-          <Route path="forms/:id" element={<Navigate to="edit" replace />} />
-
-          {/* Submissions */}
-          <Route path="forms/:formId/submissions" element={<SubmissionsListPage />} />
-          <Route path="submissions/:id" element={<SubmissionDetailPage />} />
-
-          {/* Analytics (Pro) */}
-          <Route path="forms/:formId/analytics" element={<AnalyticsRoute />} />
-
-          {/* Compliance (Business) */}
-          <Route
-            path="compliance"
-            element={
-              <Suspense fallback={null}>
-                <CompliancePage />
-              </Suspense>
-            }
-          />
-
-          {/* Fallback */}
-          <Route path="*" element={<Page.Error />} />
-        </Routes>
+const AppProviders = ({ children }: PropsWithChildren) => (
+  <LicenseProvider>
+    <LicenseStatusNotice />
+    {children}
+  </LicenseProvider>
 );
 
-export { App };
+const App = () => (
+  <AppProviders>
+    <Page.Protect permissions={PERMISSIONS.main}>
+      <MainRoutes />
+    </Page.Protect>
+  </AppProviders>
+);
+
+const SettingsApp = () => (
+  <AppProviders>
+    <Page.Protect permissions={PERMISSIONS.settings.read}>
+      <Suspense fallback={null}>
+        <SettingsPage />
+      </Suspense>
+    </Page.Protect>
+  </AppProviders>
+);
+
+const ComplianceApp = () => (
+  <AppProviders>
+    <Page.Protect permissions={PERMISSIONS.main}>
+      <Suspense fallback={null}>
+        <CompliancePage />
+      </Suspense>
+    </Page.Protect>
+  </AppProviders>
+);
+
+const MainRoutes = () => (
+  <Routes>
+    {/* Forms */}
+    <Route index element={<FormsListPage />} />
+    <Route path="forms" element={<FormsListPage />} />
+    <Route path="forms/create" element={<FormEditPage />} />
+    <Route path="forms/:id/edit" element={<FormEditPage />} />
+    {/* Bare form route -> redirect to the editor (avoids the error page) */}
+    <Route path="forms/:id" element={<Navigate to="edit" replace />} />
+
+    {/* Submissions */}
+    <Route path="forms/:formId/submissions" element={<SubmissionsListPage />} />
+    <Route path="submissions/:id" element={<SubmissionDetailPage />} />
+
+    {/* Analytics (Pro) */}
+    <Route path="forms/:formId/analytics" element={<AnalyticsRoute />} />
+
+    {/* Fallback */}
+    <Route path="*" element={<Page.Error />} />
+  </Routes>
+);
+
+export { App, ComplianceApp, SettingsApp };

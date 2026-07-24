@@ -61,11 +61,17 @@ test('keeps inactive excess connections deletable for recovery but not editable'
   assert.deepEqual(telegramConnectionMutationPolicy(false, false), { canEdit: false, canDelete: false });
 });
 
-test('settings route is outside the form-read guard while ordinary routes remain protected', () => {
+test('dedicated settings app is outside the form-read guard while the main app remains protected', () => {
   const source = readFileSync('admin/src/pages/App.tsx', 'utf8');
-  assert.match(source, /<LicenseProvider>[\s\S]*path="settings"[\s\S]*permissions=\{PERMISSIONS\.settings\.read\}/);
-  assert.match(source, /path="\*"[\s\S]*permissions=\{PERMISSIONS\.main\}[\s\S]*<MainRoutes/);
-  assert.doesNotMatch(source, /<Page\.Protect permissions=\{PERMISSIONS\.main\}>\s*<LicenseProvider>/);
+  assert.match(
+    source,
+    /const SettingsApp[\s\S]*<Page\.Protect permissions=\{PERMISSIONS\.settings\.read\}>[\s\S]*<SettingsPage/
+  );
+  assert.match(
+    source,
+    /const App[\s\S]*<Page\.Protect permissions=\{PERMISSIONS\.main\}>[\s\S]*<MainRoutes/
+  );
+  assert.doesNotMatch(source, /path="settings"/);
 });
 
 test('builds token-bearing create requests separately from safe responses', () => {
