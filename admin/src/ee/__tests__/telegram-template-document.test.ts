@@ -10,6 +10,7 @@ import {
   shouldSyncTelegramEditorValue,
   validateTelegramDocument,
 } from '../telegram/template-document';
+import * as telegramDocument from '../telegram/template-document';
 
 const fields = [
   { id: 'email-id', type: 'email', name: 'email', label: 'Email' },
@@ -78,6 +79,36 @@ test('preview uses the same native rich block tags as delivery compilation', () 
   assert.equal(previewTelegramDocument(document, []),
     '<h3>Heading</h3>\n<p>Paragraph</p>\n<ul><li><p>Item</p></li></ul>\n<hr/>'
   );
+});
+
+test('preview document applies the active admin palette inside the sandboxed iframe document', () => {
+  const buildPreview = (telegramDocument as Record<string, unknown>).buildTelegramPreviewDocument;
+  assert.equal(typeof buildPreview, 'function');
+  const html = (buildPreview as (
+    content: string,
+    palette: {
+      background: string;
+      surface: string;
+      text: string;
+      mutedText: string;
+      border: string;
+      link: string;
+      accent: string;
+    }
+  ) => string)('<p>Hello</p>', {
+    background: '#111111',
+    surface: '#222222',
+    text: '#eeeeee',
+    mutedText: '#cccccc',
+    border: '#444444',
+    link: '#8888ff',
+    accent: '#66b7f1',
+  });
+  for (const color of ['#111111', '#222222', '#eeeeee', '#444444', '#8888ff', '#66b7f1']) {
+    assert.match(html, new RegExp(color));
+  }
+  assert.match(html, /<p>Hello<\/p>/);
+  assert.doesNotMatch(html, /#18202c|#168acd|#63a7dc/);
 });
 
 test('admin validation rejects malformed server-contract nodes', () => {

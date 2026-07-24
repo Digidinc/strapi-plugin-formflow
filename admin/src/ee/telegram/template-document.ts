@@ -118,3 +118,74 @@ export const previewTelegramDocument = (template: TelegramTemplateDocument, fiel
     return `<${tag}>${items}</${tag}>`;
   }).join('\n');
 };
+
+export interface TelegramPreviewPalette {
+  background: string;
+  surface: string;
+  text: string;
+  mutedText: string;
+  border: string;
+  link: string;
+  accent: string;
+}
+
+export const buildTelegramPreviewDocument = (
+  content: string,
+  palette: TelegramPreviewPalette
+): string => `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<style>
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0;
+    padding: 16px;
+    background: ${palette.background};
+    color: ${palette.text};
+    font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow-wrap: anywhere;
+  }
+  body > :first-child { margin-top: 0; }
+  body > :last-child { margin-bottom: 0; }
+  p { margin: 0 0 12px; white-space: pre-wrap; }
+  h1, h2, h3 { margin: 0 0 12px; color: ${palette.text}; line-height: 1.3; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 18px; }
+  h3 { font-size: 16px; }
+  blockquote {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border-inline-start: 3px solid ${palette.accent};
+    border-radius: 4px;
+    background: ${palette.surface};
+    color: ${palette.mutedText};
+  }
+  blockquote p:last-child, li p:last-child { margin-bottom: 0; }
+  ul, ol { margin: 0 0 12px; padding-inline-start: 24px; }
+  li { margin-bottom: 4px; }
+  pre {
+    margin: 0 0 12px;
+    padding: 12px;
+    border: 1px solid ${palette.border};
+    border-radius: 4px;
+    background: ${palette.surface};
+    white-space: pre-wrap;
+    overflow-x: auto;
+  }
+  code {
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: ${palette.surface};
+    color: ${palette.text};
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+  pre code { padding: 0; background: transparent; }
+  a { color: ${palette.link}; text-decoration: underline; }
+  hr { margin: 16px 0; border: 0; border-top: 1px solid ${palette.border}; }
+</style>
+</head>
+<body>${content}</body>
+</html>`;

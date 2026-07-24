@@ -36,3 +36,29 @@ test('editor source uses the focused Lexical plugins and never persists private 
   assert.match(source, /item\.children\.forEach/);
   assert.match(source, /node\.getChildren\(\)\.map/);
 });
+
+test('editor uses themed Strapi controls and preserves the Lexical selection from toolbar interactions', () => {
+  const source = readFileSync('admin/src/ee/components/TelegramTemplateEditor.tsx', 'utf8');
+  for (const component of ['IconButton', 'IconButtonGroup', 'SingleSelect', 'StyledContentEditable']) {
+    assert.match(source, new RegExp(component));
+  }
+  assert.doesNotMatch(source, /<button\b/);
+  assert.doesNotMatch(source, /<select\b/);
+  assert.doesNotMatch(source, /theme:\s*\{\s*\}/);
+  assert.match(source, /onPointerDown/);
+  assert.match(source, /preventDefault\(\)/);
+  assert.match(source, /theme\.colors\.neutral800/);
+  assert.match(source, /data-field-id/);
+  assert.match(source, /list-style-type:\s*disc/);
+  assert.match(source, /list-style-type:\s*decimal/);
+});
+
+test('template and theme-aware sandboxed preview use a responsive two-column grid before full-width alerts', () => {
+  const source = readFileSync('admin/src/ee/components/TelegramNotificationSettings.tsx', 'utf8');
+  assert.match(source, /useTheme\(\)/);
+  assert.match(source, /<Grid\.Root[^>]*gap=\{4\}/);
+  assert.equal((source.match(/<Grid\.Item[^>]*col=\{6\}[^>]*xs=\{12\}/g) ?? []).length, 2);
+  assert.match(source, /sandbox=""/);
+  assert.match(source, /buildTelegramPreviewDocument/);
+  assert.ok(source.indexOf('</Grid.Root>') < source.indexOf('validation.errors.length'));
+});
