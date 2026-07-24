@@ -25,6 +25,7 @@ import { LockedSection } from '../../ee/components/LockedSection';
 import { LicenseStatusNotice } from '../../ee/components/LicenseStatusNotice';
 import { ProBadge } from '../../ee/components/ProBadge';
 import { premiumMutationPolicy } from '../../ee/license-state';
+import { SectionHeading } from '../shared';
 
 export interface EmailSettingsProps {
   notifications: EmailNotification[];
@@ -333,22 +334,16 @@ export const EmailSettings = ({ notifications, onChange, formFields = [] }: Emai
     <Flex direction="column" gap={4} alignItems="stretch">
       {/* Header */}
       <Flex justifyContent="space-between" alignItems="center">
-        <Box>
-          <Typography variant="delta" fontWeight="bold">
-            {formatMessage({
-              id: getTranslation('notifications.email.title'),
-              defaultMessage: 'Email Notifications',
-            })}
-          </Typography>
-          <Box>
-            <Typography variant="pi" textColor="neutral600">
-              {formatMessage({
-                id: getTranslation('notifications.email.subtitle'),
-                defaultMessage: 'Send an email when a new submission is received',
-              })}
-            </Typography>
-          </Box>
-        </Box>
+        <SectionHeading
+          title={formatMessage({
+            id: getTranslation('notifications.email.title'),
+            defaultMessage: 'Email Notifications',
+          })}
+          description={formatMessage({
+            id: getTranslation('notifications.email.subtitle'),
+            defaultMessage: 'Send an email when a new submission is received',
+          })}
+        />
         {items.length === 0 ? (
           <Button size="S" startIcon={<Plus />} onClick={addNotification}>
             {formatMessage({

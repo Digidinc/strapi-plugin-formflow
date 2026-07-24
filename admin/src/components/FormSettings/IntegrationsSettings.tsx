@@ -19,6 +19,7 @@ import { useLicense } from '../../ee/hooks/useLicense';
 import { premiumMutationPolicy } from '../../ee/license-state';
 import { LicenseStatusNotice } from '../../ee/components/LicenseStatusNotice';
 import { UpsellCard } from '../../ee/components/UpsellCard';
+import { SectionHeading } from '../shared';
 
 export interface IntegrationsSettingsProps {
   integrations: IntegrationConfig[];
@@ -288,22 +289,16 @@ export const IntegrationsSettings = ({ integrations, onChange }: IntegrationsSet
   // --- Header (shown in every access state) -----------------------------
   const renderHeader = (showAdd: boolean) => (
     <Flex justifyContent="space-between" alignItems="center">
-      <Box>
-        <Typography variant="delta" fontWeight="bold">
-          {formatMessage({
-            id: getTranslation('integrations.title'),
-            defaultMessage: 'Integrations',
-          })}
-        </Typography>
-        <Box>
-          <Typography variant="pi" textColor="neutral600">
-            {formatMessage({
-              id: getTranslation('integrations.subtitle'),
-              defaultMessage: 'Connect form submissions to external services',
-            })}
-          </Typography>
-        </Box>
-      </Box>
+      <SectionHeading
+        title={formatMessage({
+          id: getTranslation('integrations.title'),
+          defaultMessage: 'Integrations',
+        })}
+        description={formatMessage({
+          id: getTranslation('integrations.subtitle'),
+          defaultMessage: 'Connect form submissions to external services',
+        })}
+      />
       {showAdd && (
         <Button size="S" startIcon={<Plus />} onClick={addIntegration}>
           {formatMessage({

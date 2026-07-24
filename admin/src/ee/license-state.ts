@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 
-import { FEATURE_TIER, type FeatureKey } from './feature-map';
+import { FEATURE_TIER, type EntitlementLimit, type FeatureKey, type LimitKey } from './feature-map';
 
 export type LicenseResolution = 'checking' | 'resolved' | 'unavailable';
 export type FeatureAccess = 'checking' | 'entitled' | 'unentitled' | 'unavailable';
@@ -24,6 +24,7 @@ export interface LicenseSnapshot {
   resolution: LicenseResolution;
   graceUntil: string | null;
   features: Partial<Record<FeatureKey, boolean>>;
+  limits: Record<LimitKey, EntitlementLimit>;
 }
 
 const TIERS = new Set<LicenseSnapshot['tier']>(['free', 'pro', 'business']);
@@ -39,7 +40,7 @@ export function parseLicenseSnapshot(value: unknown): LicenseSnapshot {
     throw new Error('Invalid license snapshot');
   }
 
-  const { tier, state, resolution, graceUntil, features } = value;
+  const { tier, state, resolution, graceUntil, features, limits } = value;
   if (
     typeof tier !== 'string' ||
     !TIERS.has(tier as LicenseSnapshot['tier']) ||
@@ -49,7 +50,13 @@ export function parseLicenseSnapshot(value: unknown): LicenseSnapshot {
     !RESOLUTIONS.has(resolution as LicenseResolution) ||
     (typeof graceUntil !== 'string' && graceUntil !== null) ||
     !isObject(features) ||
-    Object.values(features).some((enabled) => typeof enabled !== 'boolean')
+    Object.values(features).some((enabled) => typeof enabled !== 'boolean') ||
+    !isObject(limits) ||
+    (limits.telegramConnections !== 'unlimited' &&
+      (typeof limits.telegramConnections !== 'number' ||
+        !Number.isFinite(limits.telegramConnections) ||
+        !Number.isInteger(limits.telegramConnections) ||
+        limits.telegramConnections < 0))
   ) {
     throw new Error('Invalid license snapshot');
   }
@@ -60,6 +67,7 @@ export function parseLicenseSnapshot(value: unknown): LicenseSnapshot {
     resolution: resolution as LicenseResolution,
     graceUntil: graceUntil as string | null,
     features: { ...features } as Partial<Record<FeatureKey, boolean>>,
+    limits: { telegramConnections: limits.telegramConnections as EntitlementLimit },
   };
 }
 

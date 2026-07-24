@@ -17,6 +17,30 @@ const protectedBy = (actions: string[]) => [
 export default {
   type: 'admin',
   routes: [
+    {
+      method: 'GET', path: '/settings/telegram/connections', handler: 'telegram.list',
+      config: { policies: protectedBy(['plugin::formflow.settings.read']) },
+    },
+    {
+      method: 'POST', path: '/settings/telegram/connections', handler: 'telegram.create',
+      config: { policies: protectedBy(['plugin::formflow.settings.update']) },
+    },
+    {
+      method: 'PATCH', path: '/settings/telegram/connections/:id', handler: 'telegram.update',
+      config: { policies: protectedBy(['plugin::formflow.settings.update']) },
+    },
+    {
+      method: 'DELETE', path: '/settings/telegram/connections/:id', handler: 'telegram.delete',
+      config: { policies: protectedBy(['plugin::formflow.settings.update']) },
+    },
+    {
+      method: 'POST', path: '/settings/telegram/connections/validate', handler: 'telegram.validate',
+      config: { policies: protectedBy(['plugin::formflow.settings.update']) },
+    },
+    {
+      method: 'POST', path: '/forms/:formId/telegram/test', handler: 'telegram.test',
+      config: { policies: protectedBy(['plugin::formflow.form.update']) },
+    },
     // Form CRUD operations
     {
       method: 'GET',

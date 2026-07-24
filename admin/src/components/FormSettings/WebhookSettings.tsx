@@ -28,6 +28,7 @@ import { LicenseStatusNotice } from '../../ee/components/LicenseStatusNotice';
 import { UpsellCard } from '../../ee/components/UpsellCard';
 import { premiumMutationPolicy } from '../../ee/license-state';
 import { refreshLicenseOnPaymentRequired } from '../../ee/payment-required';
+import { SectionHeading } from '../shared';
 
 export interface WebhookSettingsProps {
   webhooks: WebhookConfig[];
@@ -339,22 +340,16 @@ export const WebhookSettings = ({ webhooks, onChange, formId }: WebhookSettingsP
     <Flex direction="column" gap={4} alignItems="stretch">
       {/* Header */}
       <Flex justifyContent="space-between" alignItems="center">
-        <Box>
-          <Typography variant="delta" fontWeight="bold">
-            {formatMessage({
-              id: getTranslation('notifications.webhook.title'),
-              defaultMessage: 'Webhooks',
-            })}
-          </Typography>
-          <Box>
-            <Typography variant="pi" textColor="neutral600">
-              {formatMessage({
-                id: getTranslation('notifications.webhook.subtitle'),
-                defaultMessage: 'Send submission data to an external URL',
-              })}
-            </Typography>
-          </Box>
-        </Box>
+        <SectionHeading
+          title={formatMessage({
+            id: getTranslation('notifications.webhook.title'),
+            defaultMessage: 'Webhooks',
+          })}
+          description={formatMessage({
+            id: getTranslation('notifications.webhook.subtitle'),
+            defaultMessage: 'Send submission data to an external URL',
+          })}
+        />
         <GatedButton
           access={webhooksAccess}
           feature="webhooks"

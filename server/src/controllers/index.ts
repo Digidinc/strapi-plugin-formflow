@@ -3,6 +3,7 @@ import publicController from './public';
 import submission from './submission';
 import license from './license';
 import compliance from './compliance';
+import telegram from './telegram';
 
 export default {
   form,
@@ -10,4 +11,5 @@ export default {
   submission,
   license,
   compliance,
+  telegram,
 };

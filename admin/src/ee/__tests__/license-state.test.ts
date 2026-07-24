@@ -24,6 +24,7 @@ const snapshot = (overrides: Partial<LicenseSnapshot>): LicenseSnapshot => ({
   resolution: 'resolved',
   graceUntil: null,
   features: {},
+  limits: { telegramConnections: 1 },
   ...overrides,
 });
 
@@ -34,6 +35,7 @@ const proSnapshot = snapshot({
   tier: 'pro',
   state: 'active',
   features: { conditionalLogic: true },
+  limits: { telegramConnections: 2 },
 });
 const businessSnapshot = snapshot({
   tier: 'business',
@@ -88,6 +90,27 @@ assert.equal(reconcileDismissedNotice(firstGraceNotice, nextGraceNotice), null);
 assert.equal(reconcileDismissedNotice(unavailableNotice, null), null);
 
 assert.throws(() => parseLicenseSnapshot({ tier: 'pro' }));
+assert.equal(
+  parseLicenseSnapshot({
+    tier: 'business',
+    state: 'active',
+    resolution: 'resolved',
+    graceUntil: null,
+    features: { integrations: true },
+    limits: { telegramConnections: 4 },
+  }).limits.telegramConnections,
+  4
+);
+for (const telegramConnections of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '3', 'forever']) {
+  assert.throws(() => parseLicenseSnapshot({
+    tier: 'business', state: 'active', resolution: 'resolved', graceUntil: null,
+    features: { integrations: true }, limits: { telegramConnections },
+  }), `must reject invalid telegram connection limit ${String(telegramConnections)}`);
+}
+assert.equal(parseLicenseSnapshot({
+  tier: 'business', state: 'active', resolution: 'resolved', graceUntil: null,
+  features: {}, limits: { telegramConnections: 'unlimited' },
+}).limits.telegramConnections, 'unlimited');
 assert.deepEqual([0, 1, 2, 3, 20].map(retryDelay), [250, 500, 1000, 1000, 1000]);
 
 const refreshStartResolution = (

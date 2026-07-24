@@ -25,6 +25,7 @@ import { premiumMutationPolicy } from '../../ee/license-state';
 import { LockedSection } from '../../ee/components/LockedSection';
 import { LicenseStatusNotice } from '../../ee/components/LicenseStatusNotice';
 import { UpsellCard } from '../../ee/components/UpsellCard';
+import { SectionHeading } from '../shared';
 
 export interface LocalesEditorProps {
   /** The form's fields — drives which fields/options can be overridden. */
@@ -164,23 +165,17 @@ export const LocalesEditor = ({ fields, locales, onChange }: LocalesEditorProps)
   ): string => locales[code]?.fields?.[field.id]?.options?.[optionIndex]?.label ?? defaultLabel;
 
   const header = (
-    <Box>
-      <Typography variant="delta" fontWeight="bold">
-        {formatMessage({
-          id: getTranslation('translations.title'),
-          defaultMessage: 'Translations',
-        })}
-      </Typography>
-      <Box>
-        <Typography variant="pi" textColor="neutral600">
-          {formatMessage({
-            id: getTranslation('translations.subtitle'),
-            defaultMessage:
-              'Provide per-language overrides for field labels and messages. Consumed via the public API with ?locale=<code>.',
-          })}
-        </Typography>
-      </Box>
-    </Box>
+    <SectionHeading
+      title={formatMessage({
+        id: getTranslation('translations.title'),
+        defaultMessage: 'Translations',
+      })}
+      description={formatMessage({
+        id: getTranslation('translations.subtitle'),
+        defaultMessage:
+          'Provide per-language overrides for field labels and messages. Consumed via the public API with ?locale=<code>.',
+      })}
+    />
   );
 
   /** The editable body — reused both entitled and (read-only) when locked. */

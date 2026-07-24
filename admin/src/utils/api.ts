@@ -29,6 +29,12 @@ export const API = {
   // Webhooks
   testWebhook: (formId: string) => `/${PLUGIN_ID}/forms/${formId}/webhooks/test`,
 
+  // Global Telegram connection settings (admin-only).
+  telegramConnections: `/${PLUGIN_ID}/settings/telegram/connections`,
+  telegramConnection: (id: string) => `/${PLUGIN_ID}/settings/telegram/connections/${id}`,
+  validateTelegramConnection: `/${PLUGIN_ID}/settings/telegram/connections/validate`,
+  testTelegramConnection: (formId: string) => `/${PLUGIN_ID}/forms/${formId}/telegram/test`,
+
   // Analytics (Pro). Server gates with a 402 when unentitled.
   formAnalytics: (formId: string) => `/${PLUGIN_ID}/forms/${formId}/analytics`,
 
@@ -43,6 +49,129 @@ export const API = {
   getPartialForm: (slug: string, resumeToken: string) =>
     `/api/${PLUGIN_ID}/forms/${slug}/partial/${resumeToken}`,
 } as const;
+
+export interface TelegramBotMetadataResponse {
+  id: string;
+  displayName: string;
+  username?: string;
+}
+
+/** Safe server response. It deliberately cannot contain a bot token. */
+export interface TelegramConnectionResponse {
+  id: string;
+  name: string;
+  bot?: TelegramBotMetadataResponse;
+  createdAt: string;
+  updatedAt: string;
+  active: boolean;
+  referenceCount: number;
+}
+
+export type TelegramTemplateMark = 'bold' | 'italic' | 'underline' | 'strikethrough' | 'code';
+export type TelegramTemplateInline =
+  | { type: 'text'; text: string; marks?: TelegramTemplateMark[] }
+  | { type: 'formField'; fieldId: string; fallback: '-' }
+  | { type: 'link'; url: string; children: Array<{ type: 'text'; text: string; marks?: TelegramTemplateMark[] } | { type: 'formField'; fieldId: string; fallback: '-' }> };
+export type TelegramTemplateBlock =
+  | { type: 'paragraph'; children: TelegramTemplateInline[] }
+  | { type: 'heading'; level: 1 | 2 | 3; children: TelegramTemplateInline[] }
+  | { type: 'blockquote'; children: Array<{ type: 'paragraph'; children: TelegramTemplateInline[] }> }
+  | { type: 'codeBlock'; code: string; language?: string }
+  | { type: 'list'; style: 'ordered' | 'unordered'; children: Array<{ type: 'listItem'; children: Array<{ type: 'paragraph'; children: TelegramTemplateInline[] }> }> }
+  | { type: 'divider' };
+export interface TelegramTemplateDocument { version: 1; document: { type: 'document'; children: TelegramTemplateBlock[] } }
+export interface TelegramNotificationSettings {
+  enabled: boolean;
+  connectionId: string;
+  destination: string;
+  template: TelegramTemplateDocument;
+}
+
+export type TelegramCreateCredentialRequest = { type: 'stored'; token: string };
+export type TelegramUpdateCredentialRequest =
+  | { type: 'keep' }
+  | { type: 'replace'; token: string };
+export interface TelegramCreateConnectionRequest {
+  name: string;
+  credential: TelegramCreateCredentialRequest;
+}
+export interface TelegramUpdateConnectionRequest {
+  name: string;
+  credential: TelegramUpdateCredentialRequest;
+}
+export interface TelegramCredentialDraft {
+  mode: 'keep' | 'replace' | 'stored';
+  token: string;
+}
+
+type CreateDraft = { mode: 'stored'; token: string };
+type UpdateDraft = { mode: 'keep' } | { mode: 'replace'; token: string };
+
+export const buildTelegramCreateRequest = (name: string, draft: CreateDraft): TelegramCreateConnectionRequest => ({
+  name: name.trim(),
+  credential: { type: 'stored', token: draft.token.trim() },
+});
+
+export const buildTelegramUpdateRequest = (name: string, draft: UpdateDraft): TelegramUpdateConnectionRequest => ({
+  name: name.trim(),
+  credential: draft.mode === 'keep'
+    ? { type: 'keep' }
+    : { type: 'replace', token: draft.token.trim() },
+});
+
+export const resetTelegramCredentialDraft = (): TelegramCredentialDraft => ({
+  mode: 'keep', token: '',
+});
+
+export const connectionLimitMessage = (used: number, limit: number | 'unlimited'): string =>
+  limit === 'unlimited'
+    ? `${used} connections configured.`
+    : used >= limit
+      ? `Connection limit reached (${used} of ${limit}).`
+      : `${used} of ${limit} connections used.`;
+
+export const deletionReferenceWarning = (count: number): string =>
+  count === 0
+    ? 'This connection is not referenced by any forms.'
+    : `This connection is used by ${count} ${count === 1 ? 'form' : 'forms'}. Deleting it will disconnect ${count === 1 ? 'that form' : 'those forms'}.`;
+
+export const connectionAvailability = (connection: Pick<TelegramConnectionResponse, 'active'>):
+  'connected' | 'disconnected' =>
+  connection.active ? 'connected' : 'disconnected';
+
+export const telegramConnectionMutationPolicy = (active: boolean, canUpdate: boolean) => ({
+  canEdit: active && canUpdate,
+  // Deletion remains available for inactive excess records so an administrator
+  // can recover to the licensed limit without first upgrading.
+  canDelete: canUpdate,
+});
+
+export const telegramValidationMatches = (
+  validatedFingerprint: string | null,
+  currentFingerprint: string,
+  bot: TelegramBotMetadataResponse | null
+): boolean => bot !== null && validatedFingerprint === currentFingerprint;
+
+export const telegramDraftCanSave = (
+  mode: TelegramCredentialDraft['mode'],
+  validatedFingerprint: string | null,
+  currentFingerprint: string,
+  validatedBot: TelegramBotMetadataResponse | null,
+  existingBot: TelegramBotMetadataResponse | null
+): boolean => mode === 'keep'
+  ? existingBot !== null
+  : telegramValidationMatches(validatedFingerprint, currentFingerprint, validatedBot);
+
+export const telegramDraftCanSubmit = (
+  name: string,
+  mode: TelegramCredentialDraft['mode'],
+  validatedFingerprint: string | null,
+  currentFingerprint: string,
+  validatedBot: TelegramBotMetadataResponse | null,
+  existingBot: TelegramBotMetadataResponse | null
+): boolean => name.trim().length > 0 && telegramDraftCanSave(
+  mode, validatedFingerprint, currentFingerprint, validatedBot, existingBot
+);
 
 /**
  * Resolve the admin JWT the same way `@strapi/admin`'s fetch client does:
@@ -93,7 +222,7 @@ const withBackendUrl = (url: string): string => {
  * Options for {@link rawRequest}.
  */
 export interface RawRequestOptions {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   accept?: string;
   signal?: AbortSignal;
@@ -519,6 +648,7 @@ export interface FormSettings {
   rateLimit?: RateLimitConfig;
   customCss?: string;
   integrations?: IntegrationConfig[];
+  telegramNotification?: TelegramNotificationSettings;
 }
 
 /**

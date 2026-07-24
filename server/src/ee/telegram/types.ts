@@ -1,0 +1,111 @@
+/* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
+
+/** Opaque stable identifier; bot metadata and names are never relationship keys. */
+export type TelegramConnectionId = string & { readonly __telegramConnectionId: unique symbol };
+
+/** Token-bearing input is deliberately separate from safe response models. */
+export type TelegramCredentialInput = { type: 'stored'; token: string };
+
+export interface TelegramBotMetadata {
+  id: string;
+  displayName: string;
+  username?: string;
+}
+
+export interface TelegramConnection {
+  id: TelegramConnectionId;
+  name: string;
+  bot?: TelegramBotMetadata;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TelegramTextNode {
+  type: 'text';
+  text: string;
+  marks?: Array<'bold' | 'italic' | 'underline' | 'strikethrough' | 'code'>;
+}
+
+export interface TelegramFormFieldNode {
+  type: 'formField';
+  fieldId: string;
+  fallback: '-';
+}
+
+export interface TelegramLinkNode {
+  type: 'link';
+  url: string;
+  children: Array<TelegramTextNode | TelegramFormFieldNode>;
+}
+
+export interface TelegramParagraphNode {
+  type: 'paragraph';
+  children: Array<TelegramTextNode | TelegramFormFieldNode | TelegramLinkNode>;
+}
+
+export interface TelegramHeadingNode {
+  type: 'heading';
+  level: 1 | 2 | 3;
+  children: Array<TelegramTextNode | TelegramFormFieldNode | TelegramLinkNode>;
+}
+
+export interface TelegramBlockquoteNode {
+  type: 'blockquote';
+  children: TelegramParagraphNode[];
+}
+
+export interface TelegramCodeBlockNode {
+  type: 'codeBlock';
+  code: string;
+  language?: string;
+}
+
+export interface TelegramListItemNode {
+  type: 'listItem';
+  children: TelegramParagraphNode[];
+}
+
+export interface TelegramListNode {
+  type: 'list';
+  style: 'ordered' | 'unordered';
+  children: TelegramListItemNode[];
+}
+
+export interface TelegramDividerNode {
+  type: 'divider';
+}
+
+export type TelegramTemplateNode =
+  | TelegramParagraphNode
+  | TelegramHeadingNode
+  | TelegramBlockquoteNode
+  | TelegramCodeBlockNode
+  | TelegramListNode
+  | TelegramDividerNode;
+
+export interface TelegramTemplateDocument {
+  version: 1;
+  document: {
+    type: 'document';
+    children: TelegramTemplateNode[];
+  };
+}
+
+export interface TelegramNotificationSettings {
+  enabled: boolean;
+  connectionId: TelegramConnectionId;
+  destination: string;
+  template: TelegramTemplateDocument;
+}
+
+export type TelegramFailure =
+  | 'configuration'
+  | 'authentication'
+  | 'destination'
+  | 'permission'
+  | 'template'
+  | 'rate_limit'
+  | 'telegram_server'
+  | 'network'
+  | 'timeout'
+  | 'unknown';
