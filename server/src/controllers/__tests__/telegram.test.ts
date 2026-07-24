@@ -72,6 +72,18 @@ test('controller rejects unknown properties before calling connection service', 
   assert.equal(called, false);
 });
 
+test('controller rejects environment-backed Telegram credentials', async () => {
+  let called = false;
+  const controller = telegramController({ strapi: { plugin: () => ({ service: (name: string) =>
+    name === 'license' ? { can: () => true } : { createConnection: () => { called = true; } },
+  }), log: { error() {} } } as any });
+  const ctx = context({ name: 'Bot', credential: { type: 'environment', variableName: 'BOT_TOKEN' } });
+  const result = await controller.create(ctx as any);
+  assert.equal(ctx.status, 400);
+  assert.equal((result as any).error.name, 'ValidationError');
+  assert.equal(called, false);
+});
+
 test('form Telegram validation rejects stale connections and permits disabling preserved config', async () => {
   const strapi = { plugin: () => ({ service: (name: string) => name === 'license'
     ? { can: () => true, resolution: () => 'resolved' }

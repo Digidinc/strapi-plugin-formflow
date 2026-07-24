@@ -10,14 +10,7 @@ import pluginConfig from '../../../config';
 assert.equal(limitForTier('free', 'telegramConnections'), 0);
 assert.equal(limitForTier('pro', 'telegramConnections'), 1);
 assert.equal(limitForTier('business', 'telegramConnections'), 3);
-assert.doesNotThrow(() =>
-  pluginConfig.validator({ telegram: { encryptionKey: Buffer.alloc(32).toString('base64') } })
-);
-assert.throws(
-  () =>
-    pluginConfig.validator({ telegram: { encryptionKey: Buffer.alloc(31).toString('base64') } }),
-  /exactly 32 bytes/
-);
+assert.equal(Object.prototype.hasOwnProperty.call(pluginConfig.default, 'telegram'), false);
 
 const strapi = {
   config: { get: () => ({ license: { key: 'pro-key' } }) },

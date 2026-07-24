@@ -3,14 +3,8 @@
 /** Opaque stable identifier; bot metadata and names are never relationship keys. */
 export type TelegramConnectionId = string & { readonly __telegramConnectionId: unique symbol };
 
-export type TelegramCredentialSource =
-  | { type: 'stored'; secretReference: string }
-  | { type: 'environment'; variableName: string };
-
 /** Token-bearing input is deliberately separate from safe response models. */
-export type TelegramCredentialInput =
-  | { type: 'stored'; token: string }
-  | { type: 'environment'; variableName: string };
+export type TelegramCredentialInput = { type: 'stored'; token: string };
 
 export interface TelegramBotMetadata {
   id: string;
@@ -21,8 +15,6 @@ export interface TelegramBotMetadata {
 export interface TelegramConnection {
   id: TelegramConnectionId;
   name: string;
-  tokenSource: TelegramCredentialSource;
-  credentialConfigured: boolean;
   bot?: TelegramBotMetadata;
   createdAt: string;
   updatedAt: string;

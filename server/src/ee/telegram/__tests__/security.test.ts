@@ -18,14 +18,13 @@ test('credentials never appear in connection responses, errors, or logs', async 
   const stored: any = { version: 1, connections: [] };
   const service = createTelegramConnectionService({
     store: { get: async () => stored, set: async ({ value }) => Object.assign(stored, value) },
-    environment: {}, encryptionKey: Buffer.alloc(32, 7).toString('base64'),
     license: { limit: () => 1 }, randomUUID: () => 'connection-id',
     fetch: async () => ({ ok: true, json: async () => ({ ok: true, result: { id: 7, first_name: 'Notifier' } }) }),
   });
   const created = await service.createConnection({ name: 'Notifications', credential: { type: 'stored', token } });
   const snapshot = JSON.stringify({ created, listed: await service.listConnections() });
   assert.doesNotMatch(snapshot, new RegExp(token));
-  assert.equal((created.tokenSource as any).token, undefined);
+  assert.equal(Object.prototype.hasOwnProperty.call(created, 'tokenSource'), false);
 
   await assert.rejects(
     createTelegramConnectionService({ ...service.dependencies, fetch: async () => { throw new Error(token); } })

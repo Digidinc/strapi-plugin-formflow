@@ -22,7 +22,7 @@ test('counts form settings that reference a stable Telegram connection ID', asyn
 
 test('production wrapper wires the Strapi-backed reference counter into safe results', async () => {
   const stored = { version: 1, connections: [{
-    id: 'stable-id', name: 'Bot', tokenSource: { type: 'environment', variableName: 'BOT_TOKEN' },
+    id: 'stable-id', name: 'Bot', token: 'bot-token',
     bot: { id: '1', displayName: 'Bot' }, createdAt: '2026-07-17T00:00:00.000Z', updatedAt: '2026-07-17T00:00:00.000Z',
   }] };
   const strapi = {

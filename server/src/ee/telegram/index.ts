@@ -51,5 +51,4 @@ export const createTelegramService = (
 };
 
 export * from './connection';
-export * from './crypto';
 export * from './delivery';

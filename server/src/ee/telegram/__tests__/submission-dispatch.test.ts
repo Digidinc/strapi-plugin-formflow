@@ -85,12 +85,11 @@ test('enforces current integration entitlement and active connection quantity be
   let entitled = false;
   let requests = 0;
   const stored = { version: 1, connections: ['active', 'inactive'].map((id) => ({
-    id, name: id, tokenSource: { type: 'environment', variableName: `${id.toUpperCase()}_TOKEN` },
+    id, name: id, token: `${id}-token`,
     bot: { id, displayName: id }, createdAt: 'now', updatedAt: 'now',
   })) };
   const service = createTelegramService({
     store: { get: async () => stored, set: async () => undefined },
-    environment: { ACTIVE_TOKEN: 'one', INACTIVE_TOKEN: 'two' },
     license: { limit: () => 1, can: () => entitled },
     fetch: async () => { requests += 1; return { ok: true, status: 200, json: async () => ({ ok: true }), body: responseBody('{"ok":true}') } as any; },
     logger: { error() {} },
@@ -111,12 +110,11 @@ test('enforces current integration entitlement and active connection quantity be
 test('production dispatch remaps persisted field names to stable template field IDs', async () => {
   let requestBody: any;
   const stored = { version: 1, connections: [{
-    id: 'connection-1', name: 'Bot', tokenSource: { type: 'environment', variableName: 'BOT_TOKEN' },
+    id: 'connection-1', name: 'Bot', token: 'token',
     bot: { id: 'bot-1', displayName: 'Bot' }, createdAt: 'now', updatedAt: 'now',
   }] };
   const service = createTelegramService({
     store: { get: async () => stored, set: async () => undefined },
-    environment: { BOT_TOKEN: 'token' },
     license: { limit: () => 1, can: () => true },
     fetch: async (_url, init) => {
       requestBody = JSON.parse((init as any).body);

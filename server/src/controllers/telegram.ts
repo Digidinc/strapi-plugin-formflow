@@ -8,7 +8,6 @@ const isRecord = (value: unknown): value is RecordValue => typeof value === 'obj
 const exact = (value: RecordValue, keys: readonly string[]) => Object.keys(value).every((key) => keys.includes(key));
 const destinationValid = (value: unknown): value is string => typeof value === 'string' &&
   (/^-?[1-9]\d{0,19}$/.test(value) || /^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(value));
-const environmentName = /^[A-Z_][A-Z0-9_]*$/;
 
 const errorBody = (status: number, name: string, message: string, details: RecordValue = {}) => ({
   error: { status, name, message, details },
@@ -27,18 +26,17 @@ const paymentRequired = (ctx: Context, resolution = 'resolved') => {
   });
 };
 
-const credential = (value: unknown): boolean => isRecord(value) && exact(value, value.type === 'stored' ? ['type', 'token'] : ['type', 'variableName']) &&
-  ((value.type === 'stored' && typeof value.token === 'string' && value.token.trim().length > 0 && value.token.length <= 512) ||
-   (value.type === 'environment' && typeof value.variableName === 'string' && environmentName.test(value.variableName)));
+const credential = (value: unknown): boolean => isRecord(value) && exact(value, ['type', 'token']) &&
+  value.type === 'stored' && typeof value.token === 'string' &&
+  value.token.trim().length > 0 && value.token.length <= 512;
 const createInput = (value: unknown): value is RecordValue => isRecord(value) && exact(value, ['name', 'credential']) &&
   typeof value.name === 'string' && value.name.trim().length > 0 && value.name.length <= 100 && credential(value.credential);
 const updateInput = (value: unknown): value is RecordValue => isRecord(value) && exact(value, ['name', 'credential']) &&
   (value.name === undefined || (typeof value.name === 'string' && value.name.trim().length > 0 && value.name.length <= 100)) &&
-  isRecord(value.credential) && exact(value.credential, value.credential.type === 'keep' ? ['type'] :
-    value.credential.type === 'replace' ? ['type', 'token'] : ['type', 'variableName']) &&
+  isRecord(value.credential) && exact(value.credential, value.credential.type === 'keep' ? ['type'] : ['type', 'token']) &&
   (value.credential.type === 'keep' ||
-   (value.credential.type === 'replace' && typeof value.credential.token === 'string' && value.credential.token.trim().length > 0 && value.credential.token.length <= 512) ||
-   (value.credential.type === 'switch-to-environment' && typeof value.credential.variableName === 'string' && environmentName.test(value.credential.variableName)));
+   (value.credential.type === 'replace' && typeof value.credential.token === 'string' &&
+    value.credential.token.trim().length > 0 && value.credential.token.length <= 512));
 const validationInput = (value: unknown): value is RecordValue => isRecord(value) && exact(value, ['credential']) && credential(value.credential);
 const testInput = (value: unknown): value is RecordValue => isRecord(value) && exact(value, ['connectionId', 'destination', 'template']) &&
   typeof value.connectionId === 'string' && value.connectionId.length > 0 && destinationValid(value.destination) && isRecord(value.template);
@@ -48,8 +46,7 @@ const safeServiceError = (ctx: Context, error: unknown) => {
   if (/not found/i.test(message)) { ctx.status = 404; return errorBody(404, 'NotFoundError', 'Telegram connection not found.'); }
   if (/limit reached|current license/i.test(message)) return paymentRequired(ctx);
   ctx.status = 400;
-  const safe = /encryption key/i.test(message) ? 'Configure the Telegram encryption key and try again.'
-    : /credential validation/i.test(message) ? 'Telegram credential validation failed. Check the credential and try again.'
+  const safe = /credential validation/i.test(message) ? 'Telegram credential validation failed. Check the credential and try again.'
     : /referenced/i.test(message) ? 'The Telegram connection is still referenced by a form.'
     : 'Telegram configuration could not be saved. Check the supplied values and try again.';
   return errorBody(400, 'ValidationError', safe);

@@ -47,8 +47,6 @@ const telegramService = ({ strapi }: { strapi: Core.Strapi }): TelegramService =
         const plugin = strapi.plugin('formflow');
         implementation = mod.createTelegramService({
           store: strapi.store({ type: 'plugin', name: 'formflow' }),
-          environment: process.env,
-          encryptionKey: strapi.config.get('plugin::formflow.telegram.encryptionKey') as string | undefined,
           license: plugin.service('license'),
           fetch: globalThis.fetch as any,
           referenceCount: (id: string) => countTelegramConnectionReferences(strapi, id),
