@@ -22,6 +22,7 @@ import { parseLicenseSnapshot } from '../license-state';
 import { useLicense } from '../hooks/useLicense';
 import { LicenseStatusNotice } from './LicenseStatusNotice';
 import { UpsellCard } from './UpsellCard';
+import { SectionHeading } from '../../components/shared';
 
 type Editor = { kind: 'create' } | { kind: 'edit'; connection: TelegramConnectionResponse };
 
@@ -78,10 +79,10 @@ export const TelegramConnectionsSettings = () => {
     <Box background="neutral0" hasRadius borderColor="neutral200" padding={6} shadow="tableShadow">
       <Flex direction="column" alignItems="stretch" gap={4}>
         <Flex justifyContent="space-between" alignItems="start" gap={4}>
-          <Box>
-            <Typography variant="delta" fontWeight="bold">{formatMessage({ id: getTranslation('settings.telegram.title'), defaultMessage: 'Telegram connections' })}</Typography>
-            <Typography textColor="neutral600">{limitText}</Typography>
-          </Box>
+          <SectionHeading
+            title={formatMessage({ id: getTranslation('settings.telegram.title'), defaultMessage: 'Telegram connections' })}
+            description={limitText}
+          />
           <Button startIcon={<Plus />} disabled={rbacLoading || !canUpdate || limitReached} onClick={() => setEditor({ kind: 'create' })}>
             {formatMessage({ id: getTranslation('settings.telegram.add'), defaultMessage: 'Add connection' })}
           </Button>

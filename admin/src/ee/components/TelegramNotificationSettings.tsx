@@ -8,6 +8,7 @@ import { API, type FormField, type TelegramConnectionResponse, type TelegramNoti
 import { getTranslation } from '../../utils/getTranslation';
 import { buildTelegramTestPayload, createDefaultTelegramDocument, previewTelegramDocument, telegramNotificationState, validateTelegramDocument, type TelegramTemplateDocument } from '../telegram/template-document';
 import { TelegramTemplateEditor } from './TelegramTemplateEditor';
+import { SectionHeading } from '../../components/shared';
 
 export type TelegramNotificationSettingsValue = Omit<ApiSettings, 'template'> & { template: TelegramTemplateDocument };
 
@@ -22,7 +23,10 @@ export const TelegramNotificationSettings = ({ value, fields, formId, formTitle,
   const sendTest = async () => { setTesting(true); try { await post(API.testTelegramConnection(formId), buildTelegramTestPayload(settings)); toggleNotification({ type: 'success', message: formatMessage({ id: getTranslation('notifications.telegram.test.success'), defaultMessage: 'Telegram test message sent.' }) }); } catch (error) { toggleNotification({ type: 'danger', message: error instanceof Error ? error.message : formatMessage({ id: getTranslation('notifications.telegram.test.failure'), defaultMessage: 'Telegram test message could not be sent.' }) }); } finally { setTesting(false); } };
   const warning = status.state === 'missing' ? formatMessage({ id: getTranslation('notifications.telegram.status.missing.body'), defaultMessage: 'The saved connection was deleted. Select another connection.' }) : status.state === 'inactive' ? formatMessage({ id: getTranslation('notifications.telegram.status.inactive.body'), defaultMessage: 'This connection is inactive because it exceeds the licensed limit.' }) : status.state === 'disconnected' ? formatMessage({ id: getTranslation('notifications.telegram.status.disconnected.body'), defaultMessage: 'This connection has no available credential.' }) : null;
   return <Flex direction="column" alignItems="stretch" gap={4}>
-    <Box><Typography variant="delta" fontWeight="bold">{formatMessage({ id: getTranslation('notifications.telegram.title'), defaultMessage: 'Telegram notification' })}</Typography><Typography textColor="neutral600">{formatMessage({ id: getTranslation('notifications.telegram.description'), defaultMessage: 'Send one rich Telegram message for each form submission.' })}</Typography></Box>
+    <SectionHeading
+      title={formatMessage({ id: getTranslation('notifications.telegram.title'), defaultMessage: 'Telegram notification' })}
+      description={formatMessage({ id: getTranslation('notifications.telegram.description'), defaultMessage: 'Send one rich Telegram message for each form submission.' })}
+    />
     <Toggle checked={settings.enabled} onLabel={formatMessage({ id: getTranslation('common.enabled'), defaultMessage: 'Enabled' })} offLabel={formatMessage({ id: getTranslation('common.disabled'), defaultMessage: 'Disabled' })} onChange={(event: ChangeEvent<HTMLInputElement>) => update({ enabled: event.target.checked })} />
     {loadFailed ? <Alert variant="danger" title={formatMessage({ id: getTranslation('notifications.telegram.connections.error'), defaultMessage: 'Connections could not be loaded' })}>{formatMessage({ id: getTranslation('notifications.telegram.connections.error.body'), defaultMessage: 'Try again before enabling this notification.' })}</Alert> : null}
     {warning ? <Alert variant="warning" title={formatMessage({ id: getTranslation(`notifications.telegram.status.${status.state}`), defaultMessage: 'Connection unavailable' })}>{warning}</Alert> : null}

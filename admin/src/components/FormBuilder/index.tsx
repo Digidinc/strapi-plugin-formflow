@@ -34,6 +34,7 @@ import {
   deleteFieldAndConditions,
   renameFieldAndCascade,
 } from './conditional-relations';
+import { SectionHeading } from '../shared';
 
 export interface FormBuilderProps {
   fields: FormField[];
@@ -438,20 +439,16 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
       {/* Fields builder */}
       <Box background="neutral0" hasRadius shadow="tableShadow" padding={5}>
         <Flex justifyContent="space-between" alignItems="center" marginBottom={4}>
-          <Box>
-            <Typography variant="delta" fontWeight="bold">
-              {formatMessage({
-                id: getTranslation('builder.title'),
-                defaultMessage: 'Form Fields',
-              })}
-            </Typography>
-            <Typography variant="pi" textColor="neutral600">
-              {formatMessage({
-                id: getTranslation('builder.subtitle'),
-                defaultMessage: 'Add and configure the fields for your form',
-              })}
-            </Typography>
-          </Box>
+          <SectionHeading
+            title={formatMessage({
+              id: getTranslation('builder.title'),
+              defaultMessage: 'Form Fields',
+            })}
+            description={formatMessage({
+              id: getTranslation('builder.subtitle'),
+              defaultMessage: 'Add and configure the fields for your form',
+            })}
+          />
           <Button size="S" startIcon={<Plus />} onClick={handleAddFieldClick}>
             {formatMessage({
               id: getTranslation('builder.addField'),

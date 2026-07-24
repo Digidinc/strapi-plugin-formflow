@@ -23,6 +23,7 @@ import { ProBadge } from '../ProBadge';
 import { PURCHASE_URL } from '../UpsellCard';
 import { ConditionalRuleSummary } from './ConditionalRuleSummary';
 import { resolveConditionalLogicBody } from './conditional-logic-view';
+import { SectionHeading } from '../../../components/shared';
 
 export interface ConditionalLogicBuilderProps {
   conditional: ConditionalRule | undefined;
@@ -340,20 +341,16 @@ export const ConditionalLogicBuilder = ({
   return (
     <Box>
       <Box marginBottom={3}>
-        <Flex gap={2} alignItems="center">
-          <Typography variant="sigma" textColor="neutral600" textTransform="uppercase">
-            {conditionalTitle}
-          </Typography>
-          {access !== 'entitled' ? <ProBadge feature="conditionalLogic" /> : null}
-        </Flex>
-        <Box marginTop={1}>
-          <Typography variant="pi" textColor="neutral600">
-            {formatMessage({
-              id: getTranslation('fieldEditor.conditional.description'),
-              defaultMessage: 'Show this field based on another field’s submitted value.',
-            })}
-          </Typography>
-        </Box>
+        <SectionHeading
+          title={conditionalTitle}
+          description={formatMessage({
+            id: getTranslation('fieldEditor.conditional.description'),
+            defaultMessage: 'Show this field based on another field’s submitted value.',
+          })}
+          titleAdornment={
+            access !== 'entitled' ? <ProBadge feature="conditionalLogic" /> : undefined
+          }
+        />
       </Box>
 
       {body}
