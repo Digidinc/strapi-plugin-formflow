@@ -5,6 +5,10 @@ import { $getRoot, createEditor } from 'lexical';
 import { exportLexicalToTelegramAst, importTelegramAstIntoLexical, replaceSelectedTelegramBlock, telegramEditorNodes } from '../components/TelegramTemplateEditor';
 import type { TelegramTemplateDocument } from '../telegram/template-document';
 
+test('runtime code-block support does not load Prism highlighting side effects', () => {
+  assert.equal((globalThis as typeof globalThis & { Prism?: unknown }).Prism, undefined);
+});
+
 test('runtime Lexical conversion preserves multiple paragraphs in quotes and list items', () => {
   const document: TelegramTemplateDocument = { version: 1, document: { type: 'document', children: [
     { type: 'blockquote', children: [

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: LicenseRef-FormFlow-EE — Commercial. See LICENSE-EE. Not covered by MIT. */
 import { useEffect, useMemo, useRef } from 'react';
 import { useIntl } from 'react-intl';
-import { $createCodeNode, CodeNode } from '@lexical/code';
+import { $createCodeNode, CodeNode } from '@lexical/code-core';
 import { $createLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, ListItemNode, ListNode } from '@lexical/list';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';

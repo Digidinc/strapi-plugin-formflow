@@ -67,7 +67,7 @@
     "release": "changeset publish"
   },
   "dependencies": {
-    "@lexical/code": "0.47.0",
+    "@lexical/code-core": "0.47.0",
     "@lexical/history": "0.47.0",
     "@lexical/link": "0.47.0",
     "@lexical/list": "0.47.0",
