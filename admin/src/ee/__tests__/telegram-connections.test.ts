@@ -16,40 +16,36 @@ import {
   telegramDraftCanSubmit,
 } from '../../utils/api';
 
-test('builds keep, replace, and switch update payloads without ambiguity', () => {
+test('builds keep and replace update payloads without ambiguity', () => {
   assert.deepEqual(buildTelegramUpdateRequest('Primary', { mode: 'keep' }), {
     name: 'Primary', credential: { type: 'keep' },
   });
   assert.deepEqual(buildTelegramUpdateRequest('Primary', { mode: 'replace', token: '123:secret' }), {
     name: 'Primary', credential: { type: 'replace', token: '123:secret' },
   });
-  assert.deepEqual(buildTelegramUpdateRequest('Primary', { mode: 'environment', variableName: 'TELEGRAM_TOKEN' }), {
-    name: 'Primary', credential: { type: 'switch-to-environment', variableName: 'TELEGRAM_TOKEN' },
-  });
 });
 
 test('requires a non-empty name and the mode-specific validation state before Save', () => {
   const bot = { id: '1', displayName: 'Alerts' };
-  assert.equal(telegramDraftCanSubmit('', 'keep', null, '|keep||', null, bot), false);
-  assert.equal(telegramDraftCanSubmit('Renamed', 'keep', null, 'Renamed|keep||', null, bot), true);
-  assert.equal(telegramDraftCanSubmit('Renamed', 'replace', null, 'Renamed|replace|new|', null, bot), false);
-  assert.equal(telegramDraftCanSubmit('Renamed', 'environment', 'Renamed|environment||BOT_TOKEN', 'Renamed|environment||BOT_TOKEN', bot, null), true);
+  assert.equal(telegramDraftCanSubmit('', 'keep', null, '|keep|', null, bot), false);
+  assert.equal(telegramDraftCanSubmit('Renamed', 'keep', null, 'Renamed|keep|', null, bot), true);
+  assert.equal(telegramDraftCanSubmit('Renamed', 'replace', null, 'Renamed|replace|new', null, bot), false);
 });
 
 test('enables save only for reviewed metadata matching the unchanged draft', () => {
   const bot = { id: '1', displayName: 'Alerts' };
-  assert.equal(telegramValidationMatches('name|stored|secret|', 'name|stored|secret|', bot), true);
-  assert.equal(telegramValidationMatches('name|stored|secret|', 'renamed|stored|secret|', bot), false);
-  assert.equal(telegramValidationMatches('name|stored|secret|', 'name|environment||BOT_TOKEN', bot), false);
-  assert.equal(telegramValidationMatches('name|stored|secret|', 'name|stored|secret|', null), false);
+  assert.equal(telegramValidationMatches('name|stored|secret', 'name|stored|secret', bot), true);
+  assert.equal(telegramValidationMatches('name|stored|secret', 'renamed|stored|secret', bot), false);
+  assert.equal(telegramValidationMatches('name|stored|secret', 'name|stored|other', bot), false);
+  assert.equal(telegramValidationMatches('name|stored|secret', 'name|stored|secret', null), false);
 });
 
 test('keeps rename and mode round-trip saveable with an explicit keep payload', () => {
   const existingBot = { id: '1', displayName: 'Alerts' };
-  assert.equal(telegramDraftCanSave('keep', null, 'Renamed|keep||', null, existingBot), true);
-  assert.equal(telegramDraftCanSave('replace', null, 'Renamed|replace|new|', null, existingBot), false);
+  assert.equal(telegramDraftCanSave('keep', null, 'Renamed|keep|', null, existingBot), true);
+  assert.equal(telegramDraftCanSave('replace', null, 'Renamed|replace|new', null, existingBot), false);
   // Returning from replace to keep uses safe existing metadata, never a token.
-  assert.equal(telegramDraftCanSave('keep', null, 'Renamed|keep||', null, existingBot), true);
+  assert.equal(telegramDraftCanSave('keep', null, 'Renamed|keep|', null, existingBot), true);
   assert.deepEqual(buildTelegramUpdateRequest('Renamed', { mode: 'keep' }), {
     name: 'Renamed', credential: { type: 'keep' },
   });
@@ -78,14 +74,11 @@ test('builds token-bearing create requests separately from safe responses', () =
   assert.deepEqual(buildTelegramCreateRequest('Alerts', { mode: 'stored', token: '123:secret' }), {
     name: 'Alerts', credential: { type: 'stored', token: '123:secret' },
   });
-  assert.deepEqual(buildTelegramCreateRequest('Alerts', { mode: 'environment', variableName: 'BOT_TOKEN' }), {
-    name: 'Alerts', credential: { type: 'environment', variableName: 'BOT_TOKEN' },
-  });
 });
 
 test('clears secret-bearing draft state after validation or persistence', () => {
   const reset = resetTelegramCredentialDraft();
-  assert.deepEqual(reset, { mode: 'keep', token: '', variableName: '' });
+  assert.deepEqual(reset, { mode: 'keep', token: '' });
   assert.equal(JSON.stringify(reset).includes('123:secret'), false);
 });
 
@@ -100,14 +93,19 @@ test('warns before deleting referenced connections', () => {
   assert.equal(deletionReferenceWarning(2), 'This connection is used by 2 forms. Deleting it will disconnect those forms.');
 });
 
-test('distinguishes disconnected and missing environment credentials', () => {
-  assert.equal(connectionAvailability({ active: false, credentialConfigured: true }), 'disconnected');
-  assert.equal(connectionAvailability({ active: true, credentialConfigured: false }), 'environment-missing');
-  assert.equal(connectionAvailability({ active: true, credentialConfigured: true }), 'connected');
+test('distinguishes connected and license-disconnected credentials', () => {
+  assert.equal(connectionAvailability({ active: false }), 'disconnected');
+  assert.equal(connectionAvailability({ active: true }), 'connected');
 });
 
 test('builds every global connection route', () => {
   assert.equal(API.telegramConnections, '/formflow/settings/telegram/connections');
   assert.equal(API.telegramConnection('stable-id'), '/formflow/settings/telegram/connections/stable-id');
   assert.equal(API.validateTelegramConnection, '/formflow/settings/telegram/connections/validate');
+});
+
+test('connection editor exposes stored tokens only', () => {
+  const source = readFileSync('admin/src/ee/components/TelegramConnectionsSettings.tsx', 'utf8');
+  assert.doesNotMatch(source, /Use environment variable|variableName|mode === 'environment'/);
+  assert.match(source, /type="password"/);
 });

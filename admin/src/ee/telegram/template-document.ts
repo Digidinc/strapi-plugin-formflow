@@ -18,12 +18,11 @@ export interface TelegramDocumentIssue { code: string; path: string; message: st
 export interface TelegramDocumentWarning { code: 'sensitive_field'; fieldId: string; message: string }
 export interface TelegramNotificationValue { enabled: boolean; connectionId: string; destination: string; template: TelegramTemplateDocument }
 export const buildTelegramTestPayload = (value: TelegramNotificationValue) => ({ connectionId: value.connectionId, destination: value.destination, template: value.template });
-export const telegramNotificationState = (value: TelegramNotificationValue, connections: readonly { id: string; active: boolean; credentialConfigured: boolean }[]) => {
+export const telegramNotificationState = (value: TelegramNotificationValue, connections: readonly { id: string; active: boolean }[]) => {
   if (!value.connectionId) return { state: 'unselected' as const, canSend: false };
   const connection = connections.find((item) => item.id === value.connectionId);
   if (!connection) return { state: 'missing' as const, canSend: false };
   if (!connection.active) return { state: 'inactive' as const, canSend: false };
-  if (!connection.credentialConfigured) return { state: 'disconnected' as const, canSend: false };
   return { state: 'connected' as const, canSend: true };
 };
 export const shouldSyncTelegramEditorValue = (currentEditorSerialization: string, incomingSerialization: string): boolean =>

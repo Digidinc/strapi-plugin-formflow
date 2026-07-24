@@ -60,8 +60,6 @@ export interface TelegramBotMetadataResponse {
 export interface TelegramConnectionResponse {
   id: string;
   name: string;
-  tokenSource: { type: 'stored' } | { type: 'environment'; variableName: string };
-  credentialConfigured: boolean;
   bot?: TelegramBotMetadataResponse;
   createdAt: string;
   updatedAt: string;
@@ -89,13 +87,10 @@ export interface TelegramNotificationSettings {
   template: TelegramTemplateDocument;
 }
 
-export type TelegramCreateCredentialRequest =
-  | { type: 'stored'; token: string }
-  | { type: 'environment'; variableName: string };
+export type TelegramCreateCredentialRequest = { type: 'stored'; token: string };
 export type TelegramUpdateCredentialRequest =
   | { type: 'keep' }
-  | { type: 'replace'; token: string }
-  | { type: 'switch-to-environment'; variableName: string };
+  | { type: 'replace'; token: string };
 export interface TelegramCreateConnectionRequest {
   name: string;
   credential: TelegramCreateCredentialRequest;
@@ -105,32 +100,27 @@ export interface TelegramUpdateConnectionRequest {
   credential: TelegramUpdateCredentialRequest;
 }
 export interface TelegramCredentialDraft {
-  mode: 'keep' | 'replace' | 'stored' | 'environment';
+  mode: 'keep' | 'replace' | 'stored';
   token: string;
-  variableName: string;
 }
 
-type CreateDraft = { mode: 'stored'; token: string } | { mode: 'environment'; variableName: string };
-type UpdateDraft = { mode: 'keep' } | { mode: 'replace'; token: string } | { mode: 'environment'; variableName: string };
+type CreateDraft = { mode: 'stored'; token: string };
+type UpdateDraft = { mode: 'keep' } | { mode: 'replace'; token: string };
 
 export const buildTelegramCreateRequest = (name: string, draft: CreateDraft): TelegramCreateConnectionRequest => ({
   name: name.trim(),
-  credential: draft.mode === 'stored'
-    ? { type: 'stored', token: draft.token.trim() }
-    : { type: 'environment', variableName: draft.variableName.trim() },
+  credential: { type: 'stored', token: draft.token.trim() },
 });
 
 export const buildTelegramUpdateRequest = (name: string, draft: UpdateDraft): TelegramUpdateConnectionRequest => ({
   name: name.trim(),
   credential: draft.mode === 'keep'
     ? { type: 'keep' }
-    : draft.mode === 'replace'
-      ? { type: 'replace', token: draft.token.trim() }
-      : { type: 'switch-to-environment', variableName: draft.variableName.trim() },
+    : { type: 'replace', token: draft.token.trim() },
 });
 
 export const resetTelegramCredentialDraft = (): TelegramCredentialDraft => ({
-  mode: 'keep', token: '', variableName: '',
+  mode: 'keep', token: '',
 });
 
 export const connectionLimitMessage = (used: number, limit: number | 'unlimited'): string =>
@@ -145,9 +135,9 @@ export const deletionReferenceWarning = (count: number): string =>
     ? 'This connection is not referenced by any forms.'
     : `This connection is used by ${count} ${count === 1 ? 'form' : 'forms'}. Deleting it will disconnect ${count === 1 ? 'that form' : 'those forms'}.`;
 
-export const connectionAvailability = (connection: Pick<TelegramConnectionResponse, 'active' | 'credentialConfigured'>):
-  'connected' | 'disconnected' | 'environment-missing' =>
-  !connection.credentialConfigured ? 'environment-missing' : connection.active ? 'connected' : 'disconnected';
+export const connectionAvailability = (connection: Pick<TelegramConnectionResponse, 'active'>):
+  'connected' | 'disconnected' =>
+  connection.active ? 'connected' : 'disconnected';
 
 export const telegramConnectionMutationPolicy = (active: boolean, canUpdate: boolean) => ({
   canEdit: active && canUpdate,

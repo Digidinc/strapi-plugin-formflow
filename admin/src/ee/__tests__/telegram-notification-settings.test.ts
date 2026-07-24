@@ -11,10 +11,10 @@ test('test payload uses current unsaved configuration without wrapper or saved v
   assert.deepEqual(buildTelegramTestPayload(settings), { connectionId: 'connection-1', destination: '@alerts', template });
 });
 
-test('missing, inactive, and credential-less connections block sending while preserving configuration', () => {
+test('missing and inactive connections block sending while preserving configuration', () => {
   assert.equal(telegramNotificationState(settings, []).state, 'missing');
-  assert.equal(telegramNotificationState(settings, [{ id: 'connection-1', active: false, credentialConfigured: true }]).state, 'inactive');
-  assert.equal(telegramNotificationState(settings, [{ id: 'connection-1', active: true, credentialConfigured: false }]).state, 'disconnected');
+  assert.equal(telegramNotificationState(settings, [{ id: 'connection-1', active: false }]).state, 'inactive');
+  assert.equal(telegramNotificationState(settings, [{ id: 'connection-1', active: true }]).state, 'connected');
   assert.deepEqual({ ...settings, enabled: false }, { enabled: false, connectionId: 'connection-1', destination: '@alerts', template });
 });
 
