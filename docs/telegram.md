@@ -8,16 +8,9 @@ Telegram notifications are a **Pro** feature that sends a rich message after a f
 
 1. Open [@BotFather](https://t.me/BotFather), run `/newbot`, and follow the prompts. See Telegram's [bot introduction](https://core.telegram.org/bots#how-do-i-create-a-bot).
 2. Copy the Bot API token once and treat it like a password. Anyone holding it controls the bot. Never put it in source control, browser code, screenshots, support tickets, logs, or a public API response.
-3. Set a stable, base64-encoded 32-byte encryption key for stored credentials:
+3. FormFlow stores the token in Strapi's plugin store so the connection can be configured entirely from the admin panel. Protect database access and backups because they contain the token.
 
-   ```sh
-   export FORMFLOW_ENCRYPTION_KEY="$(openssl rand -base64 32)"
-   ```
-
-   Keep this key stable across restarts and replicas. Losing or changing it makes stored tokens unreadable.
-4. Prefer an environment-backed token in production. Put the token in a server-only variable of your choice, for example `TELEGRAM_NOTIFICATIONS_TOKEN`, then select that **variable name** when creating the FormFlow connection. FormFlow stores the name, not the resolved value. Environment variable names must use uppercase letters, digits, and underscores and may not start with a digit.
-
-If a token may have leaked, revoke/regenerate it in BotFather immediately, update the environment secret (or use **Replace token**), restart affected processes, and send a new test message. Rotation does not require editing every form because forms reference the connection's stable ID.
+If a token may have leaked, revoke or regenerate it in BotFather immediately, use **Replace token** in FormFlow Settings, and send a new test message. Rotation does not require a Strapi restart or editing every form because forms reference the connection's stable ID.
 
 ## 2. Prepare a destination
 
@@ -31,7 +24,7 @@ FormFlow accepts either a numeric chat ID (including negative group/channel IDs)
 
 ## 3. Configure FormFlow
 
-1. In **FormFlow Settings -> Telegram**, add a connection. Choose either an encrypted stored token or an environment variable name.
+1. In **FormFlow Settings -> Telegram**, add a connection and enter the bot token.
 2. Confirm the bot identity returned by Telegram, then save. A Pro installation supports one active customer-owned connection.
 3. Send the safe connection test. The test contains fixed sample text and no real submission values.
 4. Open a form, choose **Notifications -> Telegram**, select the connection and destination, edit the focused rich template, send a test, enable it, and save the form.
@@ -46,8 +39,7 @@ Delivery is fire-and-forget after a final submission is persisted. It does not d
 
 ## Troubleshooting
 
-- **Invalid credential / authentication:** rotate the token; check that the configured environment variable exists in the Strapi process (not only your shell), then restart.
-- **Encryption-key error:** `FORMFLOW_ENCRYPTION_KEY` must decode to exactly 32 bytes. Do not rotate it independently of encrypted credentials.
+- **Invalid credential / authentication:** rotate the token in BotFather, replace it in FormFlow Settings, and send another test.
 - **Chat not found:** verify the numeric ID or public username. For private chat, the user must start the bot first.
 - **Forbidden / insufficient permission:** re-add the bot or grant only the ability to send/post messages. Confirm it has not been blocked.
 - **Rate limited:** wait for Telegram's indicated interval. FormFlow deliberately will not retry the failed notification.
