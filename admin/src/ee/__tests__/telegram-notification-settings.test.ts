@@ -53,6 +53,29 @@ test('editor uses themed Strapi controls and preserves the Lexical selection fro
   assert.match(source, /list-style-type:\s*decimal/);
 });
 
+test('editor toolbar separates pointer selection preservation from keyboard-compatible activation', () => {
+  const source = readFileSync('admin/src/ee/components/TelegramTemplateEditor.tsx', 'utf8');
+  const iconButtons = source.match(/<IconButton\b[\s\S]*?<\/IconButton>/g) ?? [];
+
+  assert.ok(iconButtons.length > 0);
+  for (const button of iconButtons) {
+    assert.match(button, /onPointerDown=\{preserveSelection\}/);
+    assert.match(button, /onClick=\{runToolbarAction\(/);
+    assert.doesNotMatch(button, /onPointerDown=\{preserveSelection\(\(\) =>/);
+  }
+  assert.match(source, /const preserveSelection = \(event: PointerEvent<HTMLButtonElement>\) => \{\s*event\.preventDefault\(\);\s*\};/);
+});
+
+test('block-style dropdown does not falsely report paragraph after applying another style', () => {
+  const source = readFileSync('admin/src/ee/components/TelegramTemplateEditor.tsx', 'utf8');
+  const blockStyleSelect = source.match(/<SingleSelect[\s\S]*?aria-label=\{t\('block', 'Block style'\)\}[\s\S]*?>/)?.[0];
+
+  assert.ok(blockStyleSelect);
+  assert.match(blockStyleSelect, /value=\{null\}/);
+  assert.match(blockStyleSelect, /placeholder=\{t\('block', 'Block style'\)\}/);
+  assert.doesNotMatch(blockStyleSelect, /value="paragraph"/);
+});
+
 test('template and theme-aware sandboxed preview use a responsive two-column grid before full-width alerts', () => {
   const source = readFileSync('admin/src/ee/components/TelegramNotificationSettings.tsx', 'utf8');
   assert.match(source, /useTheme\(\)/);

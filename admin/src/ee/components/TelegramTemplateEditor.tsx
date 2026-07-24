@@ -371,8 +371,10 @@ const EditorCommands = ({ fields }: { fields: readonly TelegramTemplateField[] }
     });
     editor.focus();
   };
-  const preserveSelection = (action: () => void) => (event: PointerEvent<HTMLButtonElement>) => {
+  const preserveSelection = (event: PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
+  };
+  const runToolbarAction = (action: () => void) => () => {
     action();
     editor.focus();
   };
@@ -388,7 +390,8 @@ const EditorCommands = ({ fields }: { fields: readonly TelegramTemplateField[] }
       <SingleSelect
         size="S"
         aria-label={t('block', 'Block style')}
-        value="paragraph"
+        value={null}
+        placeholder={t('block', 'Block style')}
         onChange={(value: string | number) => block(String(value))}
         onCloseAutoFocus={(event: Event) => { event.preventDefault(); editor.focus(); }}
       >
@@ -402,23 +405,23 @@ const EditorCommands = ({ fields }: { fields: readonly TelegramTemplateField[] }
     </ToolbarSelectBox>
     <IconButtonGroup>
       {formatButtons.map(({ key, fallback, format, icon }) => (
-        <IconButton key={format} type="button" size="S" variant="ghost" label={t(key, fallback)} onPointerDown={preserveSelection(() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, format))}>
+        <IconButton key={format} type="button" size="S" variant="ghost" label={t(key, fallback)} onPointerDown={preserveSelection} onClick={runToolbarAction(() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, format))}>
           {icon}
         </IconButton>
       ))}
     </IconButtonGroup>
     <IconButtonGroup>
-      <IconButton type="button" size="S" variant="ghost" label={t('link', 'Link')} onPointerDown={preserveSelection(() => {
+      <IconButton type="button" size="S" variant="ghost" label={t('link', 'Link')} onPointerDown={preserveSelection} onClick={runToolbarAction(() => {
         const url = window.prompt(t('linkPrompt', 'Link URL'));
         if (url) editor.dispatchCommand(TOGGLE_LINK_COMMAND, url);
       })}><LinkIcon /></IconButton>
-      <IconButton type="button" size="S" variant="ghost" label={t('unordered', 'Bulleted list')} onPointerDown={preserveSelection(() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined))}><BulletList /></IconButton>
-      <IconButton type="button" size="S" variant="ghost" label={t('ordered', 'Numbered list')} onPointerDown={preserveSelection(() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined))}><NumberList /></IconButton>
-      <IconButton type="button" size="S" variant="ghost" label={t('divider', 'Divider')} onPointerDown={preserveSelection(() => editor.update(() => $insertNodeToNearestRoot(new TelegramDividerNode())))}><Minus /></IconButton>
+      <IconButton type="button" size="S" variant="ghost" label={t('unordered', 'Bulleted list')} onPointerDown={preserveSelection} onClick={runToolbarAction(() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined))}><BulletList /></IconButton>
+      <IconButton type="button" size="S" variant="ghost" label={t('ordered', 'Numbered list')} onPointerDown={preserveSelection} onClick={runToolbarAction(() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined))}><NumberList /></IconButton>
+      <IconButton type="button" size="S" variant="ghost" label={t('divider', 'Divider')} onPointerDown={preserveSelection} onClick={runToolbarAction(() => editor.update(() => $insertNodeToNearestRoot(new TelegramDividerNode())))}><Minus /></IconButton>
     </IconButtonGroup>
     <IconButtonGroup>
-      <IconButton type="button" size="S" variant="ghost" label={t('undo', 'Undo')} onPointerDown={preserveSelection(() => editor.dispatchCommand(UNDO_COMMAND, undefined))}><ArrowsCounterClockwise /></IconButton>
-      <IconButton type="button" size="S" variant="ghost" label={t('redo', 'Redo')} onPointerDown={preserveSelection(() => editor.dispatchCommand(REDO_COMMAND, undefined))}><ArrowClockwise /></IconButton>
+      <IconButton type="button" size="S" variant="ghost" label={t('undo', 'Undo')} onPointerDown={preserveSelection} onClick={runToolbarAction(() => editor.dispatchCommand(UNDO_COMMAND, undefined))}><ArrowsCounterClockwise /></IconButton>
+      <IconButton type="button" size="S" variant="ghost" label={t('redo', 'Redo')} onPointerDown={preserveSelection} onClick={runToolbarAction(() => editor.dispatchCommand(REDO_COMMAND, undefined))}><ArrowClockwise /></IconButton>
     </IconButtonGroup>
     <ToolbarSelectBox>
       <SingleSelect
