@@ -1,6 +1,6 @@
 # Telegram notifications
 
-Telegram notifications are a **Pro** feature that sends a rich message after a final form submission. FormFlow uses a customer-owned bot and is outbound-only: it does not poll for updates, install or delete webhooks, receive commands, change bot/profile/chat settings, or administer destinations.
+Telegram notifications are available on every FormFlow tier and send a rich message after a final form submission. FormFlow uses a customer-owned bot and is outbound-only: it does not poll for updates, install or delete webhooks, receive commands, change bot/profile/chat settings, or administer destinations.
 
 > **No bot backend, deployment, public URL, or webhook is required for notification-only setup.** You need only BotFather, a bot token, a destination, and the FormFlow test action.
 
@@ -25,7 +25,7 @@ FormFlow accepts either a numeric chat ID (including negative group/channel IDs)
 ## 3. Configure FormFlow
 
 1. In **FormFlow Settings -> Telegram**, add a connection and enter the bot token.
-2. Confirm the bot identity returned by Telegram, then save. A Pro installation supports one active customer-owned connection.
+2. Confirm the bot identity returned by Telegram, then save. Free installations support one active customer-owned connection, Pro supports two, and Business supports four.
 3. Send the safe connection test. The test contains fixed sample text and no real submission values.
 4. Open a form, choose **Notifications -> Telegram**, select the connection and destination, edit the focused rich template, send a test, enable it, and save the form.
 

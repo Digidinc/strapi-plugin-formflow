@@ -55,7 +55,7 @@ A drag-and-drop form builder with a rich field registry:
 ### Notifications & integrations
 
 - Email notifications on submission (configurable recipients, subject, reply-to, and templates)
-- Customer-owned Telegram rich-message notifications (**Pro**) with tokens managed from the Strapi admin; outbound-only, with no deployment or webhook required ([setup guide](docs/telegram.md))
+- Customer-owned Telegram rich-message notifications (**Free: 1 connection, Pro: 2, Business: 4**) with tokens managed from the Strapi admin; outbound-only, with no deployment or webhook required ([setup guide](docs/telegram.md))
 - Outgoing webhooks (POST/PUT, custom headers, `submission.created` / `submission.updated` events)
 - Pre-built integrations: **Slack, Google Sheets, Mailchimp, HubSpot, Notion, Zapier, and Make**
 
