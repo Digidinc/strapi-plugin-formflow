@@ -39,7 +39,7 @@ test('production wrapper wires the Strapi-backed reference counter into safe res
 test('MIT boundary contains asynchronous EE dispatch rejection and returns immediately', async () => {
   const errors: unknown[][] = [];
   const strapi = {
-    plugin: () => ({ service: () => ({ limit: () => 1, can: () => true }) }),
+    plugin: () => ({ service: () => ({ limit: () => 1 }) }),
     store: () => ({ get: async () => { throw new Error('SECRET store failure'); }, set: async () => undefined }),
     config: { get: () => undefined }, documents: () => ({ findMany: async () => [] }),
     log: { error: (...args: unknown[]) => errors.push(args) },

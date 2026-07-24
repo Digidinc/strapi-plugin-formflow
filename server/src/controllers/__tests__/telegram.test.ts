@@ -46,24 +46,38 @@ const context = (body: unknown = {}, params: Record<string, string> = {}) => ({
   notFound(message: string) { this.status = 404; return { error: { message } }; },
 });
 
-test('unentitled connection mutation returns standard 402 without invoking service', async () => {
+test('zero-limit builds reject connection mutation without invoking service', async () => {
   let called = false;
   const controller = telegramController({ strapi: { plugin: () => ({ service: (name: string) =>
-    name === 'license' ? { can: () => false, resolution: () => 'resolved' } : { createConnection: () => { called = true; } },
+    name === 'license' ? { limit: () => 0, resolution: () => 'resolved' } : { createConnection: () => { called = true; } },
   }), log: { error() {} } } as any });
   const ctx = context({ name: 'Bot', credential: { type: 'environment', variableName: 'BOT_TOKEN' } });
   const result = await controller.create(ctx as any);
   assert.equal(ctx.status, 402);
   assert.equal((result as any).error.status, 402);
   assert.equal((result as any).error.name, 'PaymentRequired');
-  assert.equal((result as any).error.details.feature, 'integrations');
+  assert.equal((result as any).error.details.feature, 'telegramConnections');
   assert.equal(called, false);
+});
+
+test('free-tier connection mutation is not blocked by the paid integrations entitlement', async () => {
+  let called = false;
+  const controller = telegramController({ strapi: { plugin: () => ({ service: (name: string) =>
+    name === 'license'
+      ? { can: () => false, limit: () => 1, resolution: () => 'resolved' }
+      : { createConnection: async () => { called = true; return { id: 'free-connection' }; } },
+  }), log: { error() {} } } as any });
+  const ctx = context({ name: 'Bot', credential: { type: 'stored', token: '123456:token' } });
+  const result = await controller.create(ctx as any);
+  assert.equal(ctx.status, 201);
+  assert.equal((result as any).data.id, 'free-connection');
+  assert.equal(called, true);
 });
 
 test('controller rejects unknown properties before calling connection service', async () => {
   let called = false;
   const controller = telegramController({ strapi: { plugin: () => ({ service: (name: string) =>
-    name === 'license' ? { can: () => true } : { createConnection: () => { called = true; } },
+    name === 'license' ? { limit: () => 1 } : { createConnection: () => { called = true; } },
   }), log: { error() {} } } as any });
   const ctx = context({ name: 'Bot', credential: { type: 'environment', variableName: 'BOT_TOKEN' }, token: 'leak' });
   const result = await controller.create(ctx as any);
@@ -75,7 +89,7 @@ test('controller rejects unknown properties before calling connection service', 
 test('controller rejects environment-backed Telegram credentials', async () => {
   let called = false;
   const controller = telegramController({ strapi: { plugin: () => ({ service: (name: string) =>
-    name === 'license' ? { can: () => true } : { createConnection: () => { called = true; } },
+    name === 'license' ? { limit: () => 1 } : { createConnection: () => { called = true; } },
   }), log: { error() {} } } as any });
   const ctx = context({ name: 'Bot', credential: { type: 'environment', variableName: 'BOT_TOKEN' } });
   const result = await controller.create(ctx as any);
@@ -86,7 +100,7 @@ test('controller rejects environment-backed Telegram credentials', async () => {
 
 test('form Telegram validation rejects stale connections and permits disabling preserved config', async () => {
   const strapi = { plugin: () => ({ service: (name: string) => name === 'license'
-    ? { can: () => true, resolution: () => 'resolved' }
+    ? { can: () => true, limit: () => 1, resolution: () => 'resolved' }
     : { listConnections: async () => [{ id: 'known', active: true }] } }) } as any;
   const template = { version: 1, document: { type: 'document', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'Hi' }] }] } };
   const invalid = await validateTelegramFormSettings(strapi, [], { telegramNotification: {
@@ -100,6 +114,37 @@ test('form Telegram validation rejects stale connections and permits disabling p
   assert.equal(disabled, null);
 });
 
+test('free-tier forms can enable Telegram independently of paid integrations', async () => {
+  const strapi = { plugin: () => ({ service: (name: string) => name === 'license'
+    ? { can: () => false, limit: () => 1, resolution: () => 'resolved' }
+    : { listConnections: async () => [{ id: 'known', active: true }] } }) } as any;
+  const template = { version: 1, document: { type: 'document', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'Hi' }] }] } };
+  const result = await validateTelegramFormSettings(strapi, [], { telegramNotification: {
+    enabled: true, connectionId: 'known', destination: '@channel', template,
+  } });
+  assert.equal(result, null);
+});
+
+test('zero-limit builds reject enabled Telegram settings before loading EE services', async () => {
+  let telegramLoaded = false;
+  const strapi = { plugin: () => ({ service: (name: string) => name === 'license'
+    ? { limit: () => 0, resolution: () => 'resolved' }
+    : {
+        listConnections: async () => {
+          telegramLoaded = true;
+          throw new Error('stripped Telegram implementation must not load');
+        },
+      } }) } as any;
+  const template = { version: 1, document: { type: 'document', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'Hi' }] }] } };
+  const result = await validateTelegramFormSettings(strapi, [], { telegramNotification: {
+    enabled: true, connectionId: 'missing', destination: '@channel', template,
+  } });
+  assert.equal(result?.status, 402);
+  assert.equal(result?.message, 'Telegram connections are unavailable in this build.');
+  assert.equal(result?.details?.feature, 'telegramConnections');
+  assert.equal(telegramLoaded, false);
+});
+
 test('updating fields revalidates an already-enabled saved Telegram template', async () => {
   let updated = false;
   const template = { version: 1, document: { type: 'document', children: [{ type: 'paragraph', children: [{ type: 'formField', fieldId: 'old', fallback: '-' }] }] } };
@@ -108,7 +153,7 @@ test('updating fields revalidates an already-enabled saved Telegram template', a
       findOne: async () => ({ fields: [{ id: 'old', type: 'text', name: 'old', label: 'Old' }], settings: { telegramNotification: { enabled: true, connectionId: 'known', destination: '@channel', template } } }),
       update: async () => { updated = true; },
     }),
-    plugin: () => ({ service: (name: string) => name === 'license' ? { can: () => true } : { listConnections: async () => [{ id: 'known', active: true }] } }),
+    plugin: () => ({ service: (name: string) => name === 'license' ? { can: () => true, limit: () => 1 } : { listConnections: async () => [{ id: 'known', active: true }] } }),
   } as any;
   await assert.rejects(() => formService({ strapi }).update('form', { fields: [{ id: 'new', type: 'text', name: 'new', label: 'New' }] as any }), /template is invalid/i);
   assert.equal(updated, false);
@@ -132,7 +177,7 @@ test('disabling with only enabled false preserves saved Telegram configuration',
 test('test message renders safe samples by stable field ID', async () => {
   let sent: any;
   const controller = telegramController({ strapi: { plugin: () => ({ service: (name: string) => ({
-    license: { can: () => true },
+    license: { limit: () => 1 },
     form: { findOne: async () => ({ fields: [{ id: 'stable-id', name: 'email', type: 'email', label: 'Email' }] }) },
     telegram: { listConnections: async () => [{ id: 'known', active: true }], sendRichNotification: async (input: any) => { sent = input; return { ok: true }; } },
   } as any)[name] }), log: { error() {} } } as any });
@@ -149,7 +194,7 @@ for (const [stage, failingService] of [
   test(`test endpoint sanitizes ${stage} failures`, async () => {
     const secret = '123456:RAW_BOT_TOKEN private submission data';
     const controller = telegramController({ strapi: { plugin: () => ({ service: (name: string) => ({
-      license: { can: () => true },
+      license: { limit: () => 1 },
       form: { findOne: async () => { if (failingService === 'form') throw new Error(secret); return { fields: [] }; } },
       telegram: {
         listConnections: async () => { if (failingService === 'telegram-list') throw new Error(secret); return [{ id: 'known', active: true }]; },
@@ -168,7 +213,7 @@ for (const [stage, failingService] of [
 test('test endpoint sanitizes unexpected render failures', async () => {
   const field = { type: 'text', label: 'Secret field', get id(): string { throw new Error('RAW_RENDER_DATA'); } };
   const controller = telegramController({ strapi: { plugin: () => ({ service: (name: string) => ({
-    license: { can: () => true }, form: { findOne: async () => ({ fields: [field] }) },
+    license: { limit: () => 1 }, form: { findOne: async () => ({ fields: [field] }) },
     telegram: { listConnections: async () => [{ id: 'known', active: true }] },
   } as any)[name] }), log: { error() {} } } as any });
   const template = { version: 1, document: { type: 'document', children: [{ type: 'paragraph', children: [{ type: 'text', text: 'Test' }] }] } };

@@ -8,7 +8,6 @@
   "formflow.settings.telegram.empty": "No Telegram connections configured.",
   "formflow.settings.telegram.limit.title": "Connection limit reached",
   "formflow.settings.telegram.loadError": "Could not load Telegram connections",
-  "formflow.settings.telegram.upsell": "Telegram connections require a Pro or Business plan.",
   "formflow.analytics.completions": "Completions",
   "formflow.analytics.conversionRate": "Conversion rate",
   "formflow.analytics.dropOffs": "Drop-offs",

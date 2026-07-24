@@ -139,8 +139,16 @@ export async function validateTelegramFormSettings(
     return { status: 400, message: 'Telegram connection, destination, or template is invalid.' };
   }
   const license = strapi.plugin('formflow').service('license');
-  if (license.can('integrations') !== true) {
-    return { status: 402, message: 'Upgrade to Pro to use feature: integrations', details: { feature: 'integrations', requiredTier: 'pro', resolution: license.resolution?.() ?? 'unresolved' } };
+  const max = license.limit('telegramConnections');
+  if (max !== 'unlimited' && !(typeof max === 'number' && max > 0)) {
+    return {
+      status: 402,
+      message: 'Telegram connections are unavailable in this build.',
+      details: {
+        feature: 'telegramConnections',
+        resolution: license.resolution?.() ?? 'unresolved',
+      },
+    };
   }
   const { validateTemplate } = await import('../ee/telegram/template');
   const templateResult = validateTemplate(telegramNotification.template as any, fields.map((field) => ({
@@ -154,7 +162,7 @@ export async function validateTelegramFormSettings(
     status: 402,
     message: 'The selected Telegram connection is inactive on the current plan.',
     details: {
-      feature: 'integrations', requiredTier: 'pro', resolution: license.resolution?.() ?? 'unresolved',
+      feature: 'telegramConnections', resolution: license.resolution?.() ?? 'unresolved',
       upgradeUrl: 'https://hrahimi270.github.io/formflow/#pricing',
     },
   };

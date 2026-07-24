@@ -25,7 +25,7 @@ const isStoredConnection = (value: unknown): value is StoredConnection => {
 
 export interface ConnectionDependencies {
   store: { get(input: { key: string }): Promise<unknown>; set(input: { key: string; value: unknown }): Promise<unknown> };
-  license: { limit(key: 'telegramConnections'): Limit; can?(key: 'integrations'): boolean };
+  license: { limit(key: 'telegramConnections'): Limit };
   fetch: Fetch;
   now?: () => Date;
   randomUUID?: () => string;

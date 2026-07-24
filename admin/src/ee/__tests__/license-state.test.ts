@@ -24,7 +24,7 @@ const snapshot = (overrides: Partial<LicenseSnapshot>): LicenseSnapshot => ({
   resolution: 'resolved',
   graceUntil: null,
   features: {},
-  limits: { telegramConnections: 0 },
+  limits: { telegramConnections: 1 },
   ...overrides,
 });
 
@@ -35,7 +35,7 @@ const proSnapshot = snapshot({
   tier: 'pro',
   state: 'active',
   features: { conditionalLogic: true },
-  limits: { telegramConnections: 1 },
+  limits: { telegramConnections: 2 },
 });
 const businessSnapshot = snapshot({
   tier: 'business',
@@ -97,9 +97,9 @@ assert.equal(
     resolution: 'resolved',
     graceUntil: null,
     features: { integrations: true },
-    limits: { telegramConnections: 3 },
+    limits: { telegramConnections: 4 },
   }).limits.telegramConnections,
-  3
+  4
 );
 for (const telegramConnections of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '3', 'forever']) {
   assert.throws(() => parseLicenseSnapshot({

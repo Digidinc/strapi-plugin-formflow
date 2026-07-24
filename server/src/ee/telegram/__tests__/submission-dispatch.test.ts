@@ -81,8 +81,7 @@ test('disabled Telegram settings do not prevent independent existing hooks', asy
   form.settings = original;
 });
 
-test('enforces current integration entitlement and active connection quantity before dispatch', async () => {
-  let entitled = false;
+test('free-tier dispatch depends on active connection quantity, not paid integrations', async () => {
   let requests = 0;
   const stored = { version: 1, connections: ['active', 'inactive'].map((id) => ({
     id, name: id, token: `${id}-token`,
@@ -90,15 +89,13 @@ test('enforces current integration entitlement and active connection quantity be
   })) };
   const service = createTelegramService({
     store: { get: async () => stored, set: async () => undefined },
-    license: { limit: () => 1, can: () => entitled },
+    license: { limit: () => 1 },
     fetch: async () => { requests += 1; return { ok: true, status: 200, json: async () => ({ ok: true }), body: responseBody('{"ok":true}') } as any; },
     logger: { error() {} },
   });
   const dispatch = (connectionId: string) => service.dispatchForSubmission({
     fields: [], settings: { telegramNotification: { ...form.settings!.telegramNotification!, connectionId: connectionId as any, enabled: true } as any },
   }, { data: {} });
-  dispatch('active');
-  entitled = true;
   dispatch('inactive');
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(requests, 0);
@@ -115,7 +112,7 @@ test('production dispatch remaps persisted field names to stable template field 
   }] };
   const service = createTelegramService({
     store: { get: async () => stored, set: async () => undefined },
-    license: { limit: () => 1, can: () => true },
+    license: { limit: () => 1 },
     fetch: async (_url, init) => {
       requestBody = JSON.parse((init as any).body);
       return { ok: true, status: 200, json: async () => ({ ok: true }), body: responseBody('{"ok":true}') } as any;

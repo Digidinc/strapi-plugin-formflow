@@ -109,3 +109,19 @@ test('connection editor exposes stored tokens only', () => {
   assert.doesNotMatch(source, /Use environment variable|variableName|mode === 'environment'/);
   assert.match(source, /type="password"/);
 });
+
+test('Telegram settings use their connection limit instead of the paid integrations feature gate', () => {
+  const source = readFileSync('admin/src/ee/components/TelegramConnectionsSettings.tsx', 'utf8');
+  assert.doesNotMatch(source, /access\('integrations'\)|integrationAccess|UpsellCard/);
+  assert.match(source, /limits\.telegramConnections/);
+});
+
+test('Telegram settings do not report or allow mutations against an unknown connection limit', () => {
+  const source = readFileSync('admin/src/ee/components/TelegramConnectionsSettings.tsx', 'utf8');
+  assert.match(
+    source,
+    /const limitReached = !loading && error === null && limit !== 'unlimited' && connections\.length >= limit;/
+  );
+  assert.match(source, /description=\{!loading && error === null \? limitText : undefined\}/);
+  assert.match(source, /disabled=\{rbacLoading \|\| loading \|\| error !== null \|\| !canUpdate \|\| limitReached\}/);
+});

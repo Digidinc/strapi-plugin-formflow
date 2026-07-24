@@ -16,13 +16,18 @@ const invalid = (ctx: Context, message: string, details: RecordValue = {}) => {
   ctx.status = 400;
   return errorBody(400, 'ValidationError', message, details);
 };
-const paymentRequired = (ctx: Context, resolution = 'resolved') => {
+const telegramUnavailable = (ctx: Context, resolution = 'resolved') => {
   ctx.status = 402;
   return errorBody(402, 'PaymentRequired', resolution === 'resolved'
-    ? 'Upgrade to Pro to use feature: integrations'
-    : 'FormFlow could not verify premium access. Check the license status, then retry.', {
-    feature: 'integrations', resolution,
-    ...(resolution === 'resolved' ? { requiredTier: 'pro', upgradeUrl: 'https://hrahimi270.github.io/formflow/#pricing' } : {}),
+    ? 'Telegram connections are unavailable in this build.'
+    : 'FormFlow could not verify Telegram availability. Check the license status, then retry.', {
+    feature: 'telegramConnections', resolution,
+  });
+};
+const connectionLimitReached = (ctx: Context) => {
+  ctx.status = 402;
+  return errorBody(402, 'PaymentRequired', 'Telegram connection limit reached for the current plan.', {
+    feature: 'telegramConnections',
   });
 };
 
@@ -44,7 +49,7 @@ const testInput = (value: unknown): value is RecordValue => isRecord(value) && e
 const safeServiceError = (ctx: Context, error: unknown) => {
   const message = error instanceof Error ? error.message : '';
   if (/not found/i.test(message)) { ctx.status = 404; return errorBody(404, 'NotFoundError', 'Telegram connection not found.'); }
-  if (/limit reached|current license/i.test(message)) return paymentRequired(ctx);
+  if (/limit reached|current license/i.test(message)) return connectionLimitReached(ctx);
   ctx.status = 400;
   const safe = /credential validation/i.test(message) ? 'Telegram credential validation failed. Check the credential and try again.'
     : /referenced/i.test(message) ? 'The Telegram connection is still referenced by a form.'
@@ -60,7 +65,12 @@ const sampleFor = (field: RecordValue): unknown => field.type === 'checkbox' || 
 const telegramController = ({ strapi }: { strapi: Core.Strapi }) => {
   const service = () => strapi.plugin('formflow').service('telegram');
   const license = () => strapi.plugin('formflow').service('license');
-  const gated = (ctx: Context) => license().can('integrations') === true ? null : paymentRequired(ctx, license().resolution?.() ?? 'unresolved');
+  const gated = (ctx: Context) => {
+    const limit = license().limit('telegramConnections');
+    return limit === 'unlimited' || (typeof limit === 'number' && limit > 0)
+      ? null
+      : telegramUnavailable(ctx, license().resolution?.() ?? 'unresolved');
+  };
   return {
     async list(ctx: Context) { return { data: await service().listConnections() }; },
     async create(ctx: Context) {

@@ -5,9 +5,9 @@ export type LimitKey = 'telegramConnections';
 export type EntitlementLimit = number | 'unlimited';
 
 export const TIER_LIMITS: Record<Tier, Record<LimitKey, EntitlementLimit>> = {
-  free: { telegramConnections: 0 },
-  pro: { telegramConnections: 1 },
-  business: { telegramConnections: 3 },
+  free: { telegramConnections: 1 },
+  pro: { telegramConnections: 2 },
+  business: { telegramConnections: 4 },
 };
 
 export function limitForTier(tier: Tier, key: LimitKey): EntitlementLimit {

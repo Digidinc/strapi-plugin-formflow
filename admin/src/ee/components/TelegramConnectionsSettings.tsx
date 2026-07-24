@@ -19,9 +19,6 @@ import {
 } from '../../utils/api';
 import { type EntitlementLimit } from '../feature-map';
 import { parseLicenseSnapshot } from '../license-state';
-import { useLicense } from '../hooks/useLicense';
-import { LicenseStatusNotice } from './LicenseStatusNotice';
-import { UpsellCard } from './UpsellCard';
 import { SectionHeading } from '../../components/shared';
 
 type Editor = { kind: 'create' } | { kind: 'edit'; connection: TelegramConnectionResponse };
@@ -32,8 +29,6 @@ export const TelegramConnectionsSettings = () => {
   const { formatMessage } = useIntl();
   const { get, del } = useFetchClient();
   const { toggleNotification } = useNotification();
-  const { access } = useLicense();
-  const integrationAccess = access('integrations');
   const { isLoading: rbacLoading, allowedActions: { canUpdate } } = useRBAC(SETTINGS_PERMISSIONS);
   const [connections, setConnections] = useState<TelegramConnectionResponse[]>([]);
   const [limit, setLimit] = useState<EntitlementLimit>(0);
@@ -67,10 +62,7 @@ export const TelegramConnectionsSettings = () => {
     } catch (cause) { toggleNotification({ type: 'danger', message: messageOf(cause, formatMessage({ id: getTranslation('common.error'), defaultMessage: 'Something went wrong' })) }); }
   };
 
-  if (integrationAccess === 'checking' || integrationAccess === 'unavailable') return <LicenseStatusNotice compact />;
-  if (integrationAccess === 'unentitled') return <UpsellCard access={integrationAccess} feature="integrations" description={formatMessage({ id: getTranslation('settings.telegram.upsell'), defaultMessage: 'Telegram connections require a Pro or Business plan.' })} />;
-
-  const limitReached = limit !== 'unlimited' && connections.length >= limit;
+  const limitReached = !loading && error === null && limit !== 'unlimited' && connections.length >= limit;
   const limitText = formatMessage(
     { id: getTranslation(limitReached ? 'settings.telegram.limit.reached' : limit === 'unlimited' ? 'settings.telegram.limit.unlimited' : 'settings.telegram.limit.used'), defaultMessage: limitReached ? 'Connection limit reached ({used} of {limit}).' : limit === 'unlimited' ? '{used} connections configured.' : '{used} of {limit} connections used.' },
     { used: connections.length, limit: limit === 'unlimited' ? '' : limit }
@@ -81,9 +73,9 @@ export const TelegramConnectionsSettings = () => {
         <Flex justifyContent="space-between" alignItems="start" gap={4}>
           <SectionHeading
             title={formatMessage({ id: getTranslation('settings.telegram.title'), defaultMessage: 'Telegram connections' })}
-            description={limitText}
+            description={!loading && error === null ? limitText : undefined}
           />
-          <Button startIcon={<Plus />} disabled={rbacLoading || !canUpdate || limitReached} onClick={() => setEditor({ kind: 'create' })}>
+          <Button startIcon={<Plus />} disabled={rbacLoading || loading || error !== null || !canUpdate || limitReached} onClick={() => setEditor({ kind: 'create' })}>
             {formatMessage({ id: getTranslation('settings.telegram.add'), defaultMessage: 'Add connection' })}
           </Button>
         </Flex>

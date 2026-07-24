@@ -34,7 +34,6 @@ export const createTelegramService = (
         return;
       }
       void (async () => {
-        if (dependencies.license.can?.('integrations') !== true) return;
         const selected = (await connection.listConnections()).find((item) => item.id === settings.connectionId);
         if (!selected?.active) return;
         const input: TelegramDeliveryInput = {
