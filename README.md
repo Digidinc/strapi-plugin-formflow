@@ -165,7 +165,7 @@ npm i @formflowjs/react
 npm i @formflowjs/vue
 ```
 
-Repository and docs: **https://github.com/hrahimi270/formflow-sdk**
+Repository and docs: **https://github.com/Digidinc/formflow-sdk**
 
 ---
 
@@ -233,10 +233,10 @@ Both privacy options are OFF by default, so existing installs are unaffected unt
 
 ## Links
 
-- **Website:** https://hrahimi270.github.io/formflow
-- **Pricing & plans:** https://hrahimi270.github.io/formflow/#pricing
-- **Repository & issues:** https://github.com/hrahimi270/strapi-plugin-formflow
-- **Frontend SDKs:** https://github.com/hrahimi270/formflow-sdk (`@formflowjs/react`, `@formflowjs/vue`)
+- **Website:** https://digidinc.github.io/formflow
+- **Pricing & plans:** https://digidinc.github.io/formflow/#pricing
+- **Repository & issues:** https://github.com/Digidinc/strapi-plugin-formflow
+- **Frontend SDKs:** https://github.com/Digidinc/formflow-sdk (`@formflowjs/react`, `@formflowjs/vue`)
 
 ## Telemetry
 
