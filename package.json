@@ -121,11 +121,11 @@
   "description": "FormFlow is a flexible Strapi v5 plugin for creating dynamic forms with configurable fields, validations, and submissions, designed for headless and API-first projects.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hrahimi270/strapi-plugin-formflow.git"
+    "url": "https://github.com/Digidinc/strapi-plugin-formflow.git"
   },
-  "homepage": "https://github.com/hrahimi270/strapi-plugin-formflow#readme",
+  "homepage": "https://github.com/Digidinc/strapi-plugin-formflow#readme",
   "bugs": {
-    "url": "https://github.com/hrahimi270/strapi-plugin-formflow/issues"
+    "url": "https://github.com/Digidinc/strapi-plugin-formflow/issues"
   },
   "publishConfig": {
     "access": "public"
