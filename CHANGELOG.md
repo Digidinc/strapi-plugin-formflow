@@ -1,5 +1,11 @@
 # @formflowjs/strapi-plugin-formflow
 
+## 1.2.1
+
+### Patch Changes
+
+- 8953772: Point upgrade/upsell links and repository metadata to the new Digidinc org after the GitHub org migration. The runtime 402 upgrade URLs, the admin upsell `PURCHASE_URL`, the README, and `package.json` now use `github.com/Digidinc/…` and `digidinc.github.io/formflow`; the retired `hrahimi270.github.io` Pages URL previously left these upgrade links dead.
+
 ## 1.2.0
 
 ### Minor Changes
