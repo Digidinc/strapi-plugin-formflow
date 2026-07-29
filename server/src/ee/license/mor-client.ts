@@ -31,6 +31,8 @@ export interface MorActivateResult {
 export interface MorValidateParams {
   licenseKey: string;
   instanceId?: string;
+  /** Source of the Freemius `uid`; required by validate, normalized via {@link toUid}. */
+  instanceName?: string;
 }
 
 export interface MorValidateResult {
@@ -248,58 +250,77 @@ export async function activate(params: MorActivateParams): Promise<MorActivateRe
   return null;
 }
 
+/** Definitive Freemius rejections → a descriptive, NON-'error' status (hard-expire). */
+const ERROR_STATUS: Record<string, string> = {
+  invalid_license_key: 'invalid',
+  license_expired: 'expired',
+  license_utilized: 'utilized',
+  license_error: 'invalid',
+};
+
+/** Indeterminate outcome: the caller serves the cached tier inside the grace window. */
+const GRACE: MorValidateResult = { valid: false, tier: 'free', validUntil: null, status: 'error' };
+
 /**
- * Validate a license key (optionally against a known instance id). Never throws.
+ * Validate a license key against its Freemius install. Never throws.
  *
- * Returns `status: 'error'` ONLY for a genuine connectivity failure (network,
- * timeout/abort, 5xx, parse error) — the caller maps that to the grace window.
+ * Returns `status: 'error'` for every INDETERMINATE outcome — connectivity failure,
+ * timeout, 5xx, HTTP 402, or a missing install id — and the caller maps that to the
+ * grace window. A definitive rejection from a reachable API resolves to
+ * `valid: false` with a non-'error' status so the caller hard-expires immediately,
+ * with NO grace.
  *
- * A definitive 4xx from a reachable API (e.g. a deactivated/stale instance_id →
- * 404, or a malformed/unknown key → 400/403) resolves to `valid: false` with a
- * NON-'error' status (`not_found` / `invalid` / `disabled`) so the caller
- * hard-expires it immediately, with NO grace. A 2xx body is parsed as before:
- * `valid` requires `json.valid === true && license_key.status === 'active'`, so
- * a 200 reporting an inactive/expired key still hard-expires.
- *
- * `expires_at` is DELIBERATELY not enforced client-side: Lemon Squeezy flips
- * `status` to 'expired' itself when the expiry passes, and for subscriptions
- * `expires_at` can lag behind a renewal (dunning/retry windows) while the key is
- * still legitimately active — enforcing it here would wrongly cut off paying
- * customers. Status is the single source of truth.
+ * Unlike the previous provider, Freemius returns no server-computed status, so the
+ * expiry MUST be enforced here: `valid` requires no error code, `is_cancelled` not
+ * true, and `now <= expiration`. Renewals extend `expiration`, so the residual risk
+ * is a renewal still retrying past the old expiry — that is a definitive 'expired',
+ * not a connectivity error, and the grace window deliberately does not cover it.
  */
 export async function validate(params: MorValidateParams): Promise<MorValidateResult> {
-  const body: Record<string, unknown> = { license_key: params.licenseKey };
-  if (params.instanceId) {
-    body.instance_id = params.instanceId;
+  // An unknown install is NOT a revoked license. Without an install id Freemius
+  // cannot validate at all, so this is indeterminate → grace, never a rejection.
+  // This guard is what makes activate()'s `license_activated` recovery safe: a
+  // failed recovery holds the cached tier instead of hard-expiring a valid key.
+  // (With no cache the caller still lands on free, so no entitlement leaks.)
+  if (!params.instanceId) {
+    return { ...GRACE };
   }
 
-  const outcome = await morFetch(`${ENDPOINT}/validate`, { method: 'POST', body });
+  const query = new URLSearchParams({
+    uid: toUid(params.instanceName),
+    license_key: params.licenseKey,
+  });
+  const outcome = await morFetch(
+    `${ENDPOINT_BASE}/products/${FREEMIUS_PRODUCT_ID}/installs/${params.instanceId}/license.json?${query}`,
+    { method: 'GET' }
+  );
 
-  // (a) Connectivity failure: the ONLY case that yields 'error' → grace window.
   if (outcome.kind === 'connectivity') {
-    return { valid: false, tier: 'free', validUntil: null, status: 'error' };
+    return { ...GRACE };
   }
 
-  // (b) Definitive 4xx: API reachable and rejecting the key/instance. Hard-expire
-  // via valid:false, but with a non-'error' status so it is NOT mistaken for a
-  // connectivity loss. Map the HTTP status to a descriptive license status.
   if (outcome.kind === 'client-error') {
-    const status =
-      outcome.code === 'http_404' ? 'not_found' : outcome.code === 'http_403' ? 'disabled' : 'invalid';
-    return { valid: false, tier: 'free', validUntil: null, status };
+    // Unknown codes fail closed to 'invalid' rather than 'error': a reachable API
+    // rejecting the key is a verdict, and must not be laundered into grace.
+    return {
+      valid: false,
+      tier: 'free',
+      validUntil: null,
+      status: ERROR_STATUS[outcome.code] ?? 'invalid',
+    };
   }
 
-  // (c) 2xx body: parse as before. `valid` requires an explicitly active key.
-  const json = outcome.json;
-  const status = String(json.license_key?.status ?? 'unknown');
-  const valid = json.valid === true && status === 'active';
+  const license = outcome.json ?? {};
+  const validUntil = parseDate(license.expiration);
 
-  return {
-    valid,
-    tier: mapTierFromName(json.meta?.variant_name),
-    validUntil: parseDate(json.license_key?.expires_at),
-    status,
-  };
+  if (license.is_cancelled === true) {
+    return { valid: false, tier: 'free', validUntil, status: 'cancelled' };
+  }
+  if (validUntil !== null && new Date() > validUntil) {
+    return { valid: false, tier: 'free', validUntil, status: 'expired' };
+  }
+
+  return { valid: true, tier: mapTier(license.plan_id), validUntil, status: 'active' };
 }
 
 /**

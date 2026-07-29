@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 
 import {
   activate,
+  validate,
   mapTier,
   mapTierFromName,
   toUid,
@@ -125,4 +126,111 @@ test('activate returns null on an unrecoverable failure', async () => {
       status: 200,
     })) as any;
   assert.equal(await activate({ licenseKey: 'K', instanceName: 'a-b-c' }), null);
+});
+
+test('validate active → valid + tier from plan_id', async () => {
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        plan_id: FREEMIUS_BUSINESS_PLAN_ID,
+        expiration: '2027-01-01 00:00:00',
+        is_cancelled: false,
+      }),
+      { status: 200 }
+    )) as any;
+  assert.deepEqual(await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' }), {
+    valid: true,
+    tier: 'business',
+    validUntil: parseDate('2027-01-01 00:00:00'),
+    status: 'active',
+  });
+});
+
+test('validate sends the 32-char uid and license key as query params', async () => {
+  let calledUrl = '';
+  globalThis.fetch = (async (u: any) => {
+    calledUrl = String(u);
+    return new Response(JSON.stringify({ plan_id: FREEMIUS_PRO_PLAN_ID }), { status: 200 });
+  }) as any;
+  await validate({
+    licenseKey: 'K',
+    instanceId: '555',
+    instanceName: '7f4a1b2c-3d4e-5f60-8a9b-0c1d2e3f4a5b',
+  });
+  const url = new URL(calledUrl);
+  assert.equal(url.searchParams.get('uid'), '7f4a1b2c3d4e5f608a9b0c1d2e3f4a5b');
+  assert.equal(url.searchParams.get('license_key'), 'K');
+  assert.match(url.pathname, /\/installs\/555\/license\.json$/);
+});
+
+test('validate cancelled → hard-expire', async () => {
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        plan_id: FREEMIUS_PRO_PLAN_ID,
+        expiration: '2027-01-01 00:00:00',
+        is_cancelled: true,
+      }),
+      { status: 200 }
+    )) as any;
+  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
+  assert.equal(r.status, 'cancelled');
+  assert.equal(r.valid, false);
+});
+
+test('validate past expiration → expired (UTC boundary)', async () => {
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({ plan_id: FREEMIUS_PRO_PLAN_ID, expiration: '2020-01-01 00:00:00' }),
+      { status: 200 }
+    )) as any;
+  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
+  assert.equal(r.status, 'expired');
+  assert.equal(r.valid, false);
+});
+
+test('validate maps definitive error codes to non-error statuses', async () => {
+  const cases: Array<[string, string]> = [
+    ['invalid_license_key', 'invalid'],
+    ['license_expired', 'expired'],
+    ['license_utilized', 'utilized'],
+    ['something_unknown', 'invalid'],
+  ];
+  for (const [code, expected] of cases) {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { code } }), { status: 200 })) as any;
+    const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
+    assert.equal(r.status, expected, `code ${code}`);
+    assert.equal(r.valid, false);
+    assert.notEqual(r.status, 'error'); // must hard-expire, never enter grace
+  }
+});
+
+test('validate with NO install id → status error (grace, not rejection)', async () => {
+  let called = false;
+  globalThis.fetch = (async () => {
+    called = true;
+    return new Response('{}', { status: 200 });
+  }) as any;
+  const r = await validate({ licenseKey: 'K', instanceName: 'a-b' });
+  assert.deepEqual(r, { valid: false, tier: 'free', validUntil: null, status: 'error' });
+  assert.equal(called, false); // never builds /installs/undefined/...
+});
+
+test('validate connectivity → status error', async () => {
+  globalThis.fetch = (async () => {
+    throw new Error('offline');
+  }) as any;
+  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
+  assert.equal(r.status, 'error');
+});
+
+test('validate unknown plan_id fails closed to free', async () => {
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ plan_id: '999999', expiration: '2027-01-01 00:00:00' }), {
+      status: 200,
+    })) as any;
+  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
+  assert.equal(r.valid, true);
+  assert.equal(r.tier, 'free');
 });
