@@ -149,7 +149,9 @@ Tip: launch long-running servers via the harness background mode (they survive a
   symlink into the demo: `ln -s <sdk>/packages/core .../node_modules/@formflowjs/core` (and `react`).
   Astro `vite.resolve.dedupe: ['react','react-dom']` keeps a single React across the symlink.
 - **License tier:** set/comment `FORMFLOW_LICENSE_KEY` in `../my-strapi-project/.env` (empty = free);
-  restart Strapi to change tiers. Business inherits Pro. A key change re-activates against Lemon Squeezy.
+  restart Strapi to change tiers. Business inherits Pro. A key change re-activates against Freemius —
+  note this mints a fresh `uid`, so the previous install keeps holding its activation slot (see the
+  quota-lockout note in the README troubleshooting section).
 - **Reset DB / free-tier clean slate:** stop Strapi, `cp .tmp/data.db .tmp/data.db.bak && rm -f .tmp/data.db*`,
   restart → fresh DB; recreate the admin at `/admin`. Test admin creds used: `admin@test.local` / `Testpass123!`.
 - **Email delivery:** install `@strapi/provider-email-nodemailer` + `nodemailer` in `../my-strapi-project`;

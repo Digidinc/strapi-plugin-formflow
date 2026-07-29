@@ -229,6 +229,22 @@ The license key is provided via the **`FORMFLOW_LICENSE_KEY`** environment varia
 
 Both privacy options are OFF by default, so existing installs are unaffected until an administrator opts in **and** holds the required license entitlement.
 
+### Troubleshooting your license
+
+**Your license activates each installation against an activation slot.** Your plan includes a fixed number of slots, and each distinct installation consumes one. Most problems below come from a slot still being held by an installation you no longer use.
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Premium features stay off and the logs show a license-quota message | Every activation slot is in use — often by an old installation | Deactivate the stale site from your account dashboard, then restart Strapi |
+| Features were working, then stopped after a database reset or restore | A reset clears the stored installation identity, so the plugin registers as a **new** installation while the old one still holds the slot | Deactivate the old site from your account dashboard, then restart Strapi |
+| Features stopped after changing `FORMFLOW_LICENSE_KEY` and changing it back | Each key change re-registers the installation; the previous registration keeps its slot | Deactivate the old site from your account dashboard, then restart Strapi |
+| Features stopped after moving to a new server or container | The new host registers as a separate installation | Deactivate the old site from your account dashboard, then restart Strapi |
+| Everything works locally but not in production | The license key is missing from the production environment | Confirm `FORMFLOW_LICENSE_KEY` is set in the production `.env` and restart |
+
+**Avoiding it:** the plugin stores a stable installation identity in the Strapi database, so ordinary restarts, redeploys, and code updates reuse the same slot and never consume a new one. Only a database reset, a license-key change, or a move to a different host creates a new registration. If you routinely rebuild environments (ephemeral CI, preview deployments), contact support to raise your activation quota.
+
+**If your license lapses:** a revoked, cancelled, or expired key removes premium features at the next license check — within 24 hours, or immediately if an administrator refreshes the license from the FormFlow settings page. The 14-day grace period covers **network outages only**: if the license service is unreachable, premium features keep working from the cached entitlement. **Your forms, submissions, and data are never affected** — only premium features are gated, and the free tier stays fully functional.
+
 ---
 
 ## Links

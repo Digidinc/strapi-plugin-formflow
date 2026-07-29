@@ -30,7 +30,7 @@ via purchase (see below).
 PRODUCTION USE REQUIRES A VALID LICENSE KEY
 
 Production use of any file covered by this License-EE requires a valid FormFlow
-license key obtained via purchase from the official FormFlow store on Lemon Squeezy.
+license key obtained via purchase from the official FormFlow store.
 A "production environment" is any environment that serves real users, processes
 real data, or supports any business operations beyond evaluation.
 
@@ -41,7 +41,7 @@ To use FormFlow Pro or Business features in production:
 3. Restart the Strapi server.
 
 License keys are validated at runtime by the license service against the
-Lemon Squeezy License Key API. A 14-day grace period applies to temporary
+FormFlow merchant-of-record's license API. A 14-day grace period applies to temporary
 network connectivity failures only; revoked or expired keys hard-expire
 immediately with no grace period.
 
