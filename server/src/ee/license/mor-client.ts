@@ -46,12 +46,48 @@ export interface MorDeactivateParams {
 }
 
 /**
- * Map a Lemon Squeezy variant name to a plugin tier. Never trust a client-supplied
- * tier — the tier is derived purely from the purchased variant string returned by
- * Lemon Squeezy. `business` wins over `pro` when both substrings are present.
+ * Public Freemius identifiers. These are plain identifiers that appear in every
+ * checkout URL — NOT credentials, and safe to ship in the published package.
  */
-function mapTier(variant: string | null | undefined): Tier {
-  const v = (variant ?? '').toLowerCase();
+export const FREEMIUS_PRODUCT_ID = 'PLACEHOLDER_PRODUCT_ID';
+export const FREEMIUS_PRO_PLAN_ID = 'PLACEHOLDER_PRO_PLAN_ID';
+export const FREEMIUS_BUSINESS_PLAN_ID = 'PLACEHOLDER_BUSINESS_PLAN_ID';
+
+/** Freemius API base. */
+export const ENDPOINT_BASE = 'https://api.freemius.com/v1';
+
+/**
+ * Freemius requires the client `uid` to be exactly 32 characters, and it must be
+ * identical across activate/validate/deactivate for the same install. Our persisted
+ * instance name is a 36-char hyphenated UUIDv4, so stripping the hyphens yields
+ * exactly 32 hex chars. The service never learns about this encoding — it keeps
+ * persisting and comparing the canonical UUID.
+ */
+export function toUid(instanceName?: string): string {
+  return (instanceName ?? '').replace(/-/g, '');
+}
+
+const PLAN_TIER: Record<string, Tier> = {
+  [FREEMIUS_PRO_PLAN_ID]: 'pro',
+  [FREEMIUS_BUSINESS_PLAN_ID]: 'business',
+};
+
+/**
+ * Map a Freemius numeric plan id to a plugin tier — used by validate(), where the
+ * License object carries `plan_id`. Fails closed to 'free' for any unknown plan, so
+ * an unrecognized id can never grant a paid tier.
+ */
+export function mapTier(planId: string | number | null | undefined): Tier {
+  return PLAN_TIER[String(planId ?? '')] ?? 'free';
+}
+
+/**
+ * Map a plan NAME to a plugin tier — used by activate(), whose response carries
+ * `license_plan_name` but no `plan_id`. Never trust a client-supplied tier: the name
+ * comes from the server response. `business` wins over `pro` when both appear.
+ */
+export function mapTierFromName(name: string | null | undefined): Tier {
+  const v = (name ?? '').toLowerCase();
   if (v.includes('business')) return 'business';
   if (v.includes('pro')) return 'pro';
   return 'free';
@@ -166,7 +202,7 @@ export async function activate(params: MorActivateParams): Promise<MorActivateRe
 
   return {
     instanceId: String(json.instance.id),
-    tier: mapTier(json.meta?.variant_name),
+    tier: mapTierFromName(json.meta?.variant_name),
     validUntil: parseDate(json.license_key?.expires_at),
   };
 }
@@ -223,7 +259,7 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
 
   return {
     valid,
-    tier: mapTier(json.meta?.variant_name),
+    tier: mapTierFromName(json.meta?.variant_name),
     validUntil: parseDate(json.license_key?.expires_at),
     status,
   };
