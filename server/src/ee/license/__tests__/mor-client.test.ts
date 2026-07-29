@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   activate,
   validate,
+  deactivate,
   mapTier,
   mapTierFromName,
   toUid,
@@ -223,6 +224,35 @@ test('validate connectivity → status error', async () => {
   }) as any;
   const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
   assert.equal(r.status, 'error');
+});
+
+test('deactivate posts uid+install_id+key and never throws', async () => {
+  let sent: any;
+  globalThis.fetch = (async (_u: any, init: any) => {
+    sent = JSON.parse(init.body);
+    return new Response('{}', { status: 200 });
+  }) as any;
+  await assert.doesNotReject(
+    deactivate({
+      licenseKey: 'K',
+      instanceId: '555',
+      instanceName: '7f4a1b2c-3d4e-5f60-8a9b-0c1d2e3f4a5b',
+    })
+  );
+  assert.equal(sent.install_id, '555');
+  assert.equal(sent.license_key, 'K');
+  // Must be the SAME 32-char uid activate/validate send, or Freemius rejects it.
+  assert.equal(sent.uid, '7f4a1b2c3d4e5f608a9b0c1d2e3f4a5b');
+  assert.equal(sent.uid.length, 32);
+});
+
+test('deactivate swallows a connectivity failure', async () => {
+  globalThis.fetch = (async () => {
+    throw new Error('offline');
+  }) as any;
+  await assert.doesNotReject(
+    deactivate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b-c' })
+  );
 });
 
 test('validate unknown plan_id fails closed to free', async () => {

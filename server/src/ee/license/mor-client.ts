@@ -3,19 +3,16 @@
 import type { Tier } from '../feature-map';
 
 /**
- * Lemon Squeezy License API adapter. This file is the SOLE place where the HTTP
- * details for license activate/validate/deactivate live — the license service is
+ * Freemius License API adapter. This file is the SOLE place where the HTTP details
+ * for license activate/validate/deactivate live — the license service is
  * transport-agnostic and only ever sees the typed results below.
  */
 
-/** Abort ordinary License API requests if Lemon Squeezy does not respond in time. */
+/** Abort ordinary License API requests if Freemius does not respond in time. */
 const MOR_TIMEOUT_MS = 5000;
 
 /** Activation is a cold-boot write and needs more time for DNS/TLS + processing. */
 const ACTIVATE_TIMEOUT_MS = 15_000;
-
-/** Lemon Squeezy License API base. */
-const ENDPOINT = 'https://api.lemonsqueezy.com/v1/licenses';
 
 export interface MorActivateParams {
   licenseKey: string;
@@ -45,6 +42,8 @@ export interface MorValidateResult {
 export interface MorDeactivateParams {
   licenseKey: string;
   instanceId: string;
+  /** Required: Freemius keys deactivation on the same uid used to activate. */
+  instanceName: string;
 }
 
 /**
@@ -328,11 +327,12 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
  * thrown, and there is no meaningful result for the caller to act on.
  */
 export async function deactivate(params: MorDeactivateParams): Promise<void> {
-  await morFetch(`${ENDPOINT}/deactivate`, {
+  await morFetch(`${ENDPOINT_BASE}/products/${FREEMIUS_PRODUCT_ID}/licenses/deactivate.json`, {
     method: 'POST',
     body: {
+      uid: toUid(params.instanceName),
+      install_id: params.instanceId,
       license_key: params.licenseKey,
-      instance_id: params.instanceId,
     },
   });
 }
