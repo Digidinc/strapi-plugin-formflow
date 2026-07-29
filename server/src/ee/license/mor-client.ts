@@ -93,47 +93,52 @@ export function mapTierFromName(name: string | null | undefined): Tier {
   return 'free';
 }
 
-function parseDate(value: string | null | undefined): Date | null {
+/**
+ * Freemius reports `expiration` as `Y-m-d H:i:s` in UTC. A naive `new Date(...)` on
+ * that shape is interpreted in the HOST's timezone, which would mistime expiry by the
+ * host offset — so the space is replaced with 'T' and an explicit 'Z' appended.
+ * Strings that already carry a 'T'/'Z' are passed through untouched (appending would
+ * produce an Invalid Date).
+ */
+export function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
-  const d = new Date(value);
+  const d = /[TZ]/.test(value) ? new Date(value) : new Date(value.replace(' ', 'T') + 'Z');
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /**
  * Outcome of a single License-API HTTP call. Distinguishes the three cases the
  * license grace logic depends on:
- *   - `ok`: a 2xx response with a parsed JSON body.
- *   - `client-error`: a definitive 4xx response — Lemon Squeezy was reachable and
- *     is telling us the key/instance is invalid/not-found/disabled. Request timeout
- *     and rate-limit responses are transient and therefore excluded.
- *   - `connectivity`: a thrown fetch error, timeout/abort, 5xx server error, or
- *     a JSON parse failure — we could not get a definitive answer.
+ *   - `ok`: a successful response with a parsed JSON body.
+ *   - `client-error`: a definitive rejection — Freemius was reachable and is telling
+ *     us the key/install is invalid/expired/utilized. Freemius reports these as an
+ *     `error.code` in the body, frequently on an HTTP 200.
+ *   - `connectivity`: a thrown fetch error, timeout/abort, 5xx, 408/429, HTTP 402,
+ *     or a JSON parse failure — we could not get a definitive answer.
  */
-type MorOutcome =
+export type MorOutcome =
   | { kind: 'ok'; json: any }
-  | { kind: 'client-error'; httpStatus: number }
+  | { kind: 'client-error'; code: string; message?: string }
   | { kind: 'connectivity' };
 
 /**
- * POST JSON to a License-API endpoint with a hard abort timeout. Never throws;
- * instead returns a typed {@link MorOutcome} so callers can distinguish a
- * definitive client-side rejection (4xx) from a transient connectivity failure
- * (network, abort, 5xx, parse error).
+ * Call a License-API endpoint with a hard abort timeout. Never throws; instead
+ * returns a typed {@link MorOutcome} so callers can distinguish a definitive
+ * rejection from a transient connectivity failure.
+ *
+ * The Freemius customer-portal license endpoints are unauthenticated — they are
+ * keyed solely by the public product id, the customer's license key, and the client
+ * uid — so this deliberately sends no credential header of any kind. Shipping a
+ * seller secret in a package that runs on the customer's own server would be giving
+ * it away; see `scripts/check-license-no-secret.mjs`, which enforces that mechanically.
  */
-async function morFetch(
+export async function morFetch(
   url: string,
-  body: Record<string, unknown>,
-  timeoutMs = MOR_TIMEOUT_MS
+  opts: { method: 'GET' | 'POST'; body?: Record<string, unknown>; timeoutMs?: number }
 ): Promise<MorOutcome> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), opts.timeoutMs ?? MOR_TIMEOUT_MS);
 
-  // The Lemon Squeezy License API (activate/validate/deactivate) is authenticated
-  // SOLELY by the license key in the request body — it needs no seller token, so we
-  // deliberately send NO Authorization header. (Reading a `LEMON_SQUEEZY_API_KEY`
-  // from the host env was removed: a stray/foreign value — e.g. the host's own
-  // Lemon Squeezy integration sharing that generic var name — would be attached as a
-  // Bearer and could trigger a 401/403 that wrongly hard-expires a valid license.)
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
@@ -141,29 +146,48 @@ async function morFetch(
 
   try {
     const response = await fetch(url, {
-      method: 'POST',
+      method: opts.method,
       headers,
-      body: JSON.stringify(body),
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
       signal: controller.signal,
     });
 
-    if (!response.ok) {
+    // 402 reflects the SELLER's account state, not the customer's license; 408/429
+    // and 5xx are transient. None of these are a verdict on the key, so they must
+    // preserve a valid cached entitlement rather than hard-expire it.
+    if (
+      response.status === 402 ||
+      response.status === 408 ||
+      response.status === 429 ||
+      response.status >= 500
+    ) {
       console.warn(
-        `[FormFlow License] License API request to ${url} returned HTTP ${response.status}`
+        `[FormFlow License] License API request to ${url} returned HTTP ${response.status} — treating as unreachable.`
       );
-      // Most 4xx responses are definitive key/instance rejections. HTTP 408 and
-      // 429 are transient transport/capacity responses, just like a 5xx, and must
-      // preserve any valid cached entitlement rather than hard-expire it.
-      if (response.status === 408 || response.status === 429) {
-        return { kind: 'connectivity' };
-      }
-      if (response.status >= 400 && response.status < 500) {
-        return { kind: 'client-error', httpStatus: response.status };
-      }
       return { kind: 'connectivity' };
     }
 
-    return { kind: 'ok', json: await response.json() };
+    let json: any;
+    try {
+      json = await response.json();
+    } catch {
+      return { kind: 'connectivity' };
+    }
+
+    // Freemius signals definitive rejections in the body, often with HTTP 200.
+    if (json?.error?.code) {
+      return {
+        kind: 'client-error',
+        code: String(json.error.code),
+        ...(json.error.message ? { message: String(json.error.message) } : {}),
+      };
+    }
+
+    if (!response.ok) {
+      return { kind: 'client-error', code: `http_${response.status}` };
+    }
+
+    return { kind: 'ok', json };
   } catch (error) {
     console.error(`[FormFlow License] License API request to ${url} failed:`, error);
     return { kind: 'connectivity' };
@@ -180,14 +204,14 @@ export async function activate(params: MorActivateParams): Promise<MorActivateRe
   // Do not automatically retry this non-idempotent write: Lemon Squeezy may
   // allocate another activation even when the first response was lost. The
   // longer deadline handles cold DNS/TLS without risking duplicate slots.
-  const outcome = await morFetch(
-    `${ENDPOINT}/activate`,
-    {
+  const outcome = await morFetch(`${ENDPOINT}/activate`, {
+    method: 'POST',
+    body: {
       license_key: params.licenseKey,
       instance_name: params.instanceName,
     },
-    ACTIVATE_TIMEOUT_MS
-  );
+    timeoutMs: ACTIVATE_TIMEOUT_MS,
+  });
 
   // Activation only succeeds on a 2xx body that confirms activation. Any
   // connectivity failure OR definitive client-error is a failed activation.
@@ -232,7 +256,7 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
     body.instance_id = params.instanceId;
   }
 
-  const outcome = await morFetch(`${ENDPOINT}/validate`, body);
+  const outcome = await morFetch(`${ENDPOINT}/validate`, { method: 'POST', body });
 
   // (a) Connectivity failure: the ONLY case that yields 'error' → grace window.
   if (outcome.kind === 'connectivity') {
@@ -244,11 +268,7 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
   // connectivity loss. Map the HTTP status to a descriptive license status.
   if (outcome.kind === 'client-error') {
     const status =
-      outcome.httpStatus === 404
-        ? 'not_found'
-        : outcome.httpStatus === 403
-          ? 'disabled'
-          : 'invalid';
+      outcome.code === 'http_404' ? 'not_found' : outcome.code === 'http_403' ? 'disabled' : 'invalid';
     return { valid: false, tier: 'free', validUntil: null, status };
   }
 
@@ -271,7 +291,10 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
  */
 export async function deactivate(params: MorDeactivateParams): Promise<void> {
   await morFetch(`${ENDPOINT}/deactivate`, {
-    license_key: params.licenseKey,
-    instance_id: params.instanceId,
+    method: 'POST',
+    body: {
+      license_key: params.licenseKey,
+      instance_id: params.instanceId,
+    },
   });
 }
