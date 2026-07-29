@@ -50,9 +50,9 @@ export interface MorDeactivateParams {
  * Public Freemius identifiers. These are plain identifiers that appear in every
  * checkout URL — NOT credentials, and safe to ship in the published package.
  */
-export const FREEMIUS_PRODUCT_ID = 'PLACEHOLDER_PRODUCT_ID';
-export const FREEMIUS_PRO_PLAN_ID = 'PLACEHOLDER_PRO_PLAN_ID';
-export const FREEMIUS_BUSINESS_PLAN_ID = 'PLACEHOLDER_BUSINESS_PLAN_ID';
+export const FREEMIUS_PRODUCT_ID = '34764';
+export const FREEMIUS_PRO_PLAN_ID = '59829';
+export const FREEMIUS_BUSINESS_PLAN_ID = '59830';
 
 /** Freemius API base. */
 export const ENDPOINT_BASE = 'https://api.freemius.com/v1';
