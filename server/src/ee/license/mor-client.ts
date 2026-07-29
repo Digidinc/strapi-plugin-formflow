@@ -197,38 +197,55 @@ export async function morFetch(
 }
 
 /**
- * Activate a license key against Lemon Squeezy, binding it to an instance name.
- * Returns the new instance id and resolved tier, or `null` on any failure.
+ * Activate a license key against Freemius, binding it to this install's uid.
+ * Returns the new install id and a best-effort tier, or `null` on any failure.
+ *
+ * Only the `instanceId` matters to the caller — `ensureActivated()` consumes just
+ * that, and validate() is the authority on tier/expiry. Activate's response carries
+ * `license_plan_name` but no `plan_id`/`expiration`, so the tier here is derived
+ * from the plan name and `validUntil` is left null for validate to fill in.
+ *
+ * The `install_api_token` / `install_secret_key` / `user_secret_key` fields that
+ * Freemius also returns are deliberately ignored — never persisted, logged, or sent.
  */
 export async function activate(params: MorActivateParams): Promise<MorActivateResult | null> {
-  // Do not automatically retry this non-idempotent write: Lemon Squeezy may
-  // allocate another activation even when the first response was lost. The
-  // longer deadline handles cold DNS/TLS without risking duplicate slots.
-  const outcome = await morFetch(`${ENDPOINT}/activate`, {
-    method: 'POST',
-    body: {
-      license_key: params.licenseKey,
-      instance_name: params.instanceName,
-    },
-    timeoutMs: ACTIVATE_TIMEOUT_MS,
-  });
+  const uid = toUid(params.instanceName);
 
-  // Activation only succeeds on a 2xx body that confirms activation. Any
-  // connectivity failure OR definitive client-error is a failed activation.
-  if (outcome.kind !== 'ok') {
-    return null;
+  // Do not automatically retry this non-idempotent write: Freemius may allocate
+  // another activation even when the first response was lost. The longer deadline
+  // handles cold DNS/TLS without risking duplicate slots.
+  const outcome = await morFetch(
+    `${ENDPOINT_BASE}/products/${FREEMIUS_PRODUCT_ID}/licenses/activate.json`,
+    {
+      method: 'POST',
+      body: { uid, license_key: params.licenseKey, title: uid },
+      timeoutMs: ACTIVATE_TIMEOUT_MS,
+    }
+  );
+
+  if (outcome.kind === 'ok') {
+    const installId = outcome.json?.install_id;
+    if (!installId) return null;
+    return {
+      instanceId: String(installId),
+      tier: mapTierFromName(outcome.json.license_plan_name),
+      validUntil: null,
+    };
   }
-  const json = outcome.json;
 
-  if (json.activated !== true || !json.instance?.id) {
-    return null;
+  // The uid is already bound to an install we lost track of (e.g. the persisted
+  // instance id was wiped but the activation still exists upstream). Recover the id
+  // from the error message so validate() can proceed against the real install.
+  if (outcome.kind === 'client-error' && outcome.code === 'license_activated' && outcome.message) {
+    const match = /install\s+(\d+)/i.exec(outcome.message);
+    if (match) {
+      return { instanceId: match[1], tier: 'free', validUntil: null };
+    }
   }
 
-  return {
-    instanceId: String(json.instance.id),
-    tier: mapTierFromName(json.meta?.variant_name),
-    validUntil: parseDate(json.license_key?.expires_at),
-  };
+  // Any other failure falls through to validate(), whose missing-install-id guard
+  // holds entitlement in grace rather than hard-expiring a possibly-valid key.
+  return null;
 }
 
 /**
