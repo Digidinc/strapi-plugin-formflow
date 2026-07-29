@@ -224,6 +224,9 @@ export function createLicenseService(
       const result = await dependencies.validate({
         licenseKey,
         instanceId: _instanceId ?? undefined,
+        // The MoR keys validation on the instance uid as well as the instance id;
+        // the adapter owns the encoding, so this stays the canonical UUID.
+        instanceName: await resolveInstanceName(),
       });
 
       // Connectivity / parse failure: fall back to the cached entitlement for the
