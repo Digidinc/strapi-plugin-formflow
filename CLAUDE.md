@@ -6,7 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 FormFlow is a Strapi v5 plugin for creating dynamic, configurable forms through the admin panel. It follows a headless CMS architecture where forms are managed in Strapi and consumed via REST API by any frontend.
 
-**Key Reference**: See `architecture.md` for detailed implementation plans, data models, and API designs.
+**Key Reference**: See `architecture.md` for detailed implementation plans, data models, and API designs. See [`docs/README.md`](docs/README.md) for the documentation index.
+
+**Decisions (ADRs)** — read before changing licensing/monetization:
+- [ADR-0001](docs/decisions/0001-merchant-of-record-freemius.md) — Merchant of Record is **Freemius**.
+- [ADR-0002](docs/decisions/0002-annual-only-no-lifetime.md) — **Annual-only** pricing; no lifetime plan.
+
+**Licensing / MoR:** the EE engine is in `server/src/ee/license/`. `service.ts` is the provider-agnostic entitlement state machine (do not make it provider-specific); `mor-client.ts` is the sole MoR adapter (Freemius) and is the **only** place license HTTP lives. Invariant: it ships **no seller secret** (no `Authorization` header), enforced by `scripts/check-license-no-secret.mjs`. Tier derives only from the server response.
 
 ## Commands
 
