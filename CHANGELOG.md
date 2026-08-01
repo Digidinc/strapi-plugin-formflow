@@ -1,5 +1,11 @@
 # @formflowjs/strapi-plugin-formflow
 
+## 1.3.0
+
+### Minor Changes
+
+- a64e0fc: Migrate commercial licensing to Freemius, keep annual-only plans, and align the published ownership and Digid Inc. contact details.
+
 ## 1.2.1
 
 ### Patch Changes
