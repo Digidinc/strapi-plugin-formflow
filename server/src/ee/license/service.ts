@@ -26,7 +26,7 @@ const KEY_HASH_KEY = 'license-key-hash';
 // Connectivity-failure grace window, in days. Intentionally a FIXED constant and
 // NOT customer-configurable: the plugin runs in the customer's own environment, so
 // any env var (e.g. a `FORMFLOW_LICENSE_GRACE_DAYS`) would let a customer set an
-// arbitrarily large window and then block the Lemon Squeezy API to run Pro/Business
+// arbitrarily large window and then block the license API to run Pro/Business
 // indefinitely without a valid key. Changing this value requires editing this
 // EE file, which is a license violation and forces a rebuild.
 const GRACE_DAYS = 14;
@@ -224,6 +224,9 @@ export function createLicenseService(
       const result = await dependencies.validate({
         licenseKey,
         instanceId: _instanceId ?? undefined,
+        // The MoR keys validation on the instance uid as well as the instance id;
+        // the adapter owns the encoding, so this stays the canonical UUID.
+        instanceName: await resolveInstanceName(),
       });
 
       // Connectivity / parse failure: fall back to the cached entitlement for the

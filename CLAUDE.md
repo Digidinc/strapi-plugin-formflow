@@ -6,7 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 FormFlow is a Strapi v5 plugin for creating dynamic, configurable forms through the admin panel. It follows a headless CMS architecture where forms are managed in Strapi and consumed via REST API by any frontend.
 
-**Key Reference**: See `architecture.md` for detailed implementation plans, data models, and API designs.
+**Key Reference**: See `architecture.md` for detailed implementation plans, data models, and API designs. See [`docs/README.md`](docs/README.md) for the documentation index.
+
+**Decisions (ADRs)** — read before changing licensing/monetization:
+- [ADR-0001](docs/decisions/0001-merchant-of-record-freemius.md) — Merchant of Record is **Freemius**.
+- [ADR-0002](docs/decisions/0002-annual-only-no-lifetime.md) — **Annual-only** pricing; no lifetime plan.
+
+**Licensing / MoR:** the EE engine is in `server/src/ee/license/`. `service.ts` is the provider-agnostic entitlement state machine (do not make it provider-specific); `mor-client.ts` is the sole MoR adapter (Freemius) and is the **only** place license HTTP lives. Invariant: it ships **no seller secret** (no `Authorization` header), enforced by `scripts/check-license-no-secret.mjs`. Tier derives only from the server response.
 
 ## Commands
 
@@ -143,7 +149,9 @@ Tip: launch long-running servers via the harness background mode (they survive a
   symlink into the demo: `ln -s <sdk>/packages/core .../node_modules/@formflowjs/core` (and `react`).
   Astro `vite.resolve.dedupe: ['react','react-dom']` keeps a single React across the symlink.
 - **License tier:** set/comment `FORMFLOW_LICENSE_KEY` in `../my-strapi-project/.env` (empty = free);
-  restart Strapi to change tiers. Business inherits Pro. A key change re-activates against Lemon Squeezy.
+  restart Strapi to change tiers. Business inherits Pro. A key change re-activates against Freemius —
+  note this mints a fresh `uid`, so the previous install keeps holding its activation slot (see the
+  quota-lockout note in the README troubleshooting section).
 - **Reset DB / free-tier clean slate:** stop Strapi, `cp .tmp/data.db .tmp/data.db.bak && rm -f .tmp/data.db*`,
   restart → fresh DB; recreate the admin at `/admin`. Test admin creds used: `admin@test.local` / `Testpass123!`.
 - **Email delivery:** install `@strapi/provider-email-nodemailer` + `nodemailer` in `../my-strapi-project`;

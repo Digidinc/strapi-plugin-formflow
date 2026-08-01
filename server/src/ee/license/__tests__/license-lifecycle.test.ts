@@ -10,6 +10,7 @@ import { activate as activateMorLicense, validate as validateMorLicense } from '
 import { createLicenseService, type LicenseDependencies, type LicenseService } from '../service';
 
 const NOW = new Date('2026-02-01T00:00:00.000Z');
+const MOR_INSTANCE_NAME = '7f4a1b2c-3d4e-5f60-8a9b-0c1d2e3f4a5b';
 const VALID_PRO = {
   valid: true,
   tier: 'pro' as const,
@@ -429,7 +430,13 @@ void (async () => {
       console.warn = () => {};
       for (const status of [408, 429]) {
         globalThis.fetch = async () => ({ ok: false, status }) as Response;
-        const transientResult = await validateMorLicense({ licenseKey: 'rate-limited-key' });
+        // An instance id is required, otherwise the missing-id guard short-circuits
+        // to 'error' without an HTTP call and this would assert nothing.
+        const transientResult = await validateMorLicense({
+          licenseKey: 'rate-limited-key',
+          instanceId: 'rate-limited-install',
+          instanceName: MOR_INSTANCE_NAME,
+        });
         assert.equal(
           transientResult.status,
           'error',
@@ -475,14 +482,12 @@ void (async () => {
           });
 
       globalThis.fetch = delayedFetch({
-        activated: true,
-        instance: { id: 'slow-activation-instance' },
-        meta: { variant_name: 'Business annual' },
-        license_key: { expires_at: '2026-12-31T00:00:00.000Z' },
+        install_id: 'slow-activation-instance',
+        license_plan_name: 'Business Annual',
       });
       const slowActivation = await activateMorLicense({
         licenseKey: 'slow-activation-key',
-        instanceName: 'slow-activation-instance-name',
+        instanceName: MOR_INSTANCE_NAME,
       });
       assert.equal(
         slowActivation?.instanceId,
@@ -491,11 +496,14 @@ void (async () => {
       );
 
       globalThis.fetch = delayedFetch({
-        valid: true,
-        meta: { variant_name: 'Business annual' },
-        license_key: { status: 'active', expires_at: '2026-12-31T00:00:00.000Z' },
+        plan_id: 'slow-validation-plan',
+        expiration: '2026-12-31 00:00:00',
       });
-      const slowValidation = await validateMorLicense({ licenseKey: 'slow-validation-key' });
+      const slowValidation = await validateMorLicense({
+        licenseKey: 'slow-validation-key',
+        instanceId: 'slow-validation-install',
+        instanceName: MOR_INSTANCE_NAME,
+      });
       assert.equal(
         slowValidation.status,
         'error',
@@ -532,7 +540,11 @@ void (async () => {
         }) as Response;
 
       const stalledBodyResult = await Promise.race([
-        validateMorLicense({ licenseKey: 'stalled-body-key' }),
+        validateMorLicense({
+          licenseKey: 'stalled-body-key',
+          instanceId: 'stalled-body-install',
+          instanceName: MOR_INSTANCE_NAME,
+        }),
         new Promise<never>((_resolve, reject) => {
           bodyTimeoutId = originalSetTimeout(
             () => reject(new Error('license response body was not aborted')),

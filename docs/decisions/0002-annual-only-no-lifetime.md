@@ -1,0 +1,33 @@
+# ADR-0002: Annual-only pricing — no lifetime plan
+
+- **Status:** Accepted (2026-07-29)
+- **Deciders:** FormFlow maintainers
+- **Related:** [ADR-0001](0001-merchant-of-record-freemius.md)
+
+## Context
+
+Freemius supports a lifetime billing cycle natively, so a one-time-payment SKU was
+technically available alongside recurring plans. This ADR records which billing
+model FormFlow actually sells, because the adapter's plan model encodes it.
+
+## Decision
+
+Sell **annual recurring only**. Exactly two plans, **Pro** and **Business**, each
+annual. **No lifetime SKU.**
+
+## Rationale
+
+A lifetime license is a perpetual obligation — updates, compatibility with each new
+Strapi major, and support — funded by a single one-time payment. Annual recurring
+revenue aligns income with the ongoing cost of keeping the plugin working, which a
+one-time payment does not.
+
+## Consequences
+
+- The adapter's `plan_id → tier` map has exactly two entries, and
+  `mapTierFromName` recognizes exactly two plan names. Anything else fails closed
+  to `'free'`.
+- A valid paid license always carries a populated `expiration`; renewals extend it.
+  Because Freemius uses `null` for lifetime licenses, the adapter rejects a recognized
+  paid plan without an expiration rather than granting an unsold lifetime entitlement.
+- The product model stays simple: no one-time vs recurring split in the adapter.

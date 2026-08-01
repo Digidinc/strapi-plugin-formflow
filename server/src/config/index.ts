@@ -36,7 +36,7 @@ export interface FormFlowConfig {
   dataRetentionDays: number;
   license: {
     /**
-     * License key obtained from Lemon Squeezy after purchase.
+     * License key obtained from the FormFlow store after purchase.
      * Set via FORMFLOW_LICENSE_KEY env var. Empty string = free tier.
      * SERVER-ONLY: never returned in public API responses or the /license snapshot.
      */

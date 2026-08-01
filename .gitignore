@@ -140,3 +140,13 @@ yarn-error.log
 ############################
 
 coverage
+
+
+############################
+# Local-only working docs
+############################
+
+# Internal designs/plans — maintainer-local, never published.
+docs/superpowers/
+# Vendored third-party API spec used only while developing the adapter.
+openapi.yaml

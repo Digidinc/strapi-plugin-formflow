@@ -61,7 +61,7 @@
 
 ### Patch Changes
 
-- 408e073: Set the real copyright holder and licensing contact (Bardiya Rahimi <hrahimi270@gmail.com>) in LICENSE, LICENSE-EE, and the package.json author field.
+- 408e073: Set the copyright holder and licensing contact in LICENSE, LICENSE-EE, and the package.json author field. The current commercial contact is Digid Inc. <info@digid.ca>.
 
 ## 1.0.2
 
