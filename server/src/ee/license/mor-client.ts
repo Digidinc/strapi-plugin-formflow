@@ -29,7 +29,7 @@ export interface MorValidateParams {
   licenseKey: string;
   instanceId?: string;
   /** Source of the Freemius `uid`; required by validate, normalized via {@link toUid}. */
-  instanceName?: string;
+  instanceName: string;
 }
 
 export interface MorValidateResult {
@@ -64,8 +64,9 @@ export const ENDPOINT_BASE = 'https://api.freemius.com/v1';
  * exactly 32 hex chars. The service never learns about this encoding — it keeps
  * persisting and comparing the canonical UUID.
  */
-export function toUid(instanceName?: string): string {
-  return (instanceName ?? '').replace(/-/g, '');
+export function toUid(instanceName: string): string | null {
+  const uid = instanceName.replace(/-/g, '').toLowerCase();
+  return /^[0-9a-f]{32}$/.test(uid) ? uid : null;
 }
 
 const PLAN_TIER: Record<string, Tier> = {
@@ -114,8 +115,8 @@ export function parseDate(value: string | null | undefined): Date | null {
  *   - `client-error`: a definitive rejection — Freemius was reachable and is telling
  *     us the key/install is invalid/expired/utilized. Freemius reports these as an
  *     `error.code` in the body, frequently on an HTTP 200.
- *   - `connectivity`: a thrown fetch error, timeout/abort, 5xx, 408/429, HTTP 402,
- *     or a JSON parse failure — we could not get a definitive answer.
+ *   - `connectivity`: a thrown fetch error, timeout/abort, 5xx, 408/429, or a JSON
+ *     parse failure — we could not get a definitive answer.
  */
 export type MorOutcome =
   | { kind: 'ok'; json: any }
@@ -153,17 +154,11 @@ export async function morFetch(
       signal: controller.signal,
     });
 
-    // 402 reflects the SELLER's account state, not the customer's license; 408/429
-    // and 5xx are transient. None of these are a verdict on the key, so they must
+    // 408/429 and 5xx are transient. None of these are a verdict on the key, so they must
     // preserve a valid cached entitlement rather than hard-expire it.
-    if (
-      response.status === 402 ||
-      response.status === 408 ||
-      response.status === 429 ||
-      response.status >= 500
-    ) {
+    if (response.status === 408 || response.status === 429 || response.status >= 500) {
       console.warn(
-        `[FormFlow License] License API request to ${url} returned HTTP ${response.status} — treating as unreachable.`
+        `[FormFlow License] License API returned HTTP ${response.status} — treating as unreachable.`
       );
       return { kind: 'connectivity' };
     }
@@ -190,7 +185,9 @@ export async function morFetch(
 
     return { kind: 'ok', json };
   } catch (error) {
-    console.error(`[FormFlow License] License API request to ${url} failed:`, error);
+    // Never log the URL: validate requests carry the customer's license key in
+    // their query string.
+    console.error('[FormFlow License] License API request failed:', error);
     return { kind: 'connectivity' };
   } finally {
     clearTimeout(timeoutId);
@@ -211,6 +208,7 @@ export async function morFetch(
  */
 export async function activate(params: MorActivateParams): Promise<MorActivateResult | null> {
   const uid = toUid(params.instanceName);
+  if (!uid) return null;
 
   // Do not automatically retry this non-idempotent write: Freemius may allocate
   // another activation even when the first response was lost. The longer deadline
@@ -264,7 +262,7 @@ const GRACE: MorValidateResult = { valid: false, tier: 'free', validUntil: null,
  * Validate a license key against its Freemius install. Never throws.
  *
  * Returns `status: 'error'` for every INDETERMINATE outcome — connectivity failure,
- * timeout, 5xx, HTTP 402, or a missing install id — and the caller maps that to the
+ * timeout, 5xx, or a missing/invalid install identity — and the caller maps that to the
  * grace window. A definitive rejection from a reachable API resolves to
  * `valid: false` with a non-'error' status so the caller hard-expires immediately,
  * with NO grace.
@@ -281,12 +279,13 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
   // This guard is what makes activate()'s `license_activated` recovery safe: a
   // failed recovery holds the cached tier instead of hard-expiring a valid key.
   // (With no cache the caller still lands on free, so no entitlement leaks.)
-  if (!params.instanceId) {
+  const uid = toUid(params.instanceName);
+  if (!params.instanceId || !uid) {
     return { ...GRACE };
   }
 
   const query = new URLSearchParams({
-    uid: toUid(params.instanceName),
+    uid,
     license_key: params.licenseKey,
   });
   const outcome = await morFetch(
@@ -310,6 +309,7 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
   }
 
   const license = outcome.json ?? {};
+  const tier = mapTier(license.plan_id);
   const validUntil = parseDate(license.expiration);
 
   if (license.is_cancelled === true) {
@@ -319,7 +319,14 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
     return { valid: false, tier: 'free', validUntil, status: 'expired' };
   }
 
-  return { valid: true, tier: mapTier(license.plan_id), validUntil, status: 'active' };
+  // Freemius uses a null expiration for lifetime licenses. FormFlow sells annual
+  // subscriptions only, so a paid plan without a valid expiration must never grant
+  // premium entitlement.
+  if (tier !== 'free' && validUntil === null) {
+    return { valid: false, tier: 'free', validUntil: null, status: 'invalid' };
+  }
+
+  return { valid: true, tier, validUntil, status: 'active' };
 }
 
 /**
@@ -327,10 +334,13 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
  * thrown, and there is no meaningful result for the caller to act on.
  */
 export async function deactivate(params: MorDeactivateParams): Promise<void> {
+  const uid = toUid(params.instanceName);
+  if (!uid) return;
+
   await morFetch(`${ENDPOINT_BASE}/products/${FREEMIUS_PRODUCT_ID}/licenses/deactivate.json`, {
     method: 'POST',
     body: {
-      uid: toUid(params.instanceName),
+      uid,
       install_id: params.instanceId,
       license_key: params.licenseKey,
     },

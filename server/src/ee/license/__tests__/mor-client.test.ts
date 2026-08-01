@@ -19,6 +19,7 @@ import {
 
 /** Restore the real fetch after stubbing it, so tests never leak into each other. */
 const realFetch = globalThis.fetch;
+const INSTANCE_NAME = '7f4a1b2c-3d4e-5f60-8a9b-0c1d2e3f4a5b';
 test.afterEach(() => {
   globalThis.fetch = realFetch;
 });
@@ -38,8 +39,9 @@ test('mapTierFromName: business beats pro, else free', () => {
 });
 
 test('toUid strips hyphens to 32 chars', () => {
-  assert.equal(toUid('7f4a1b2c-3d4e-5f60-8a9b-0c1d2e3f4a5b').length, 32);
-  assert.match(toUid('7f4a1b2c-3d4e-5f60-8a9b-0c1d2e3f4a5b'), /^[0-9a-f]{32}$/);
+  assert.equal(toUid(INSTANCE_NAME)!.length, 32);
+  assert.match(toUid(INSTANCE_NAME)!, /^[0-9a-f]{32}$/);
+  assert.equal(toUid('not-a-uuid'), null);
 });
 
 test('morFetch: error body (HTTP 200) → client-error with code', async () => {
@@ -53,8 +55,8 @@ test('morFetch: error body (HTTP 200) → client-error with code', async () => {
   });
 });
 
-test('morFetch: HTTP 402 and 5xx and throw → connectivity', async () => {
-  for (const status of [402, 500]) {
+test('morFetch: 5xx and throw → connectivity; HTTP 402 → client error', async () => {
+  for (const status of [500]) {
     globalThis.fetch = (async () => new Response('{}', { status })) as any;
     assert.deepEqual(await morFetch(`${ENDPOINT_BASE}/x`, { method: 'GET' }), {
       kind: 'connectivity',
@@ -65,6 +67,12 @@ test('morFetch: HTTP 402 and 5xx and throw → connectivity', async () => {
   }) as any;
   assert.deepEqual(await morFetch(`${ENDPOINT_BASE}/x`, { method: 'GET' }), {
     kind: 'connectivity',
+  });
+
+  globalThis.fetch = (async () => new Response('{}', { status: 402 })) as any;
+  assert.deepEqual(await morFetch(`${ENDPOINT_BASE}/x`, { method: 'GET' }), {
+    kind: 'client-error',
+    code: 'http_402',
   });
 });
 
@@ -79,6 +87,32 @@ test('morFetch: sends no authorization header', async () => {
   assert.equal(keys.includes('authorization'), false);
 });
 
+test('morFetch: never logs a validation URL containing the license key', async () => {
+  const realWarn = console.warn;
+  const realError = console.error;
+  const messages: string[] = [];
+  const secret = 'customer-license-key';
+
+  try {
+    console.warn = (...args: unknown[]) => messages.push(args.map(String).join(' '));
+    console.error = (...args: unknown[]) => messages.push(args.map(String).join(' '));
+
+    const url = `${ENDPOINT_BASE}/x?license_key=${secret}`;
+    globalThis.fetch = (async () => new Response('{}', { status: 500 })) as any;
+    await morFetch(url, { method: 'GET' });
+
+    globalThis.fetch = (async () => {
+      throw new Error('offline');
+    }) as any;
+    await morFetch(url, { method: 'GET' });
+
+    assert.equal(messages.some((message) => message.includes(secret)), false);
+  } finally {
+    console.warn = realWarn;
+    console.error = realError;
+  }
+});
+
 test('parseDate treats Y-m-d H:i:s as UTC', () => {
   assert.equal(parseDate('2027-01-02 03:04:05')!.toISOString(), '2027-01-02T03:04:05.000Z');
   assert.equal(parseDate(null), null);
@@ -89,7 +123,7 @@ test('activate parses install_id + tier from license_plan_name', async () => {
     new Response(JSON.stringify({ install_id: '555', license_plan_name: 'Business Annual' }), {
       status: 200,
     })) as any;
-  assert.deepEqual(await activate({ licenseKey: 'K', instanceName: 'a-b-c' }), {
+  assert.deepEqual(await activate({ licenseKey: 'K', instanceName: INSTANCE_NAME }), {
     instanceId: '555',
     tier: 'business',
     validUntil: null,
@@ -104,7 +138,7 @@ test('activate sends a hyphen-free uid and the license key', async () => {
       status: 200,
     });
   }) as any;
-  await activate({ licenseKey: 'K', instanceName: '7f4a1b2c-3d4e-5f60-8a9b-0c1d2e3f4a5b' });
+  await activate({ licenseKey: 'K', instanceName: INSTANCE_NAME });
   assert.equal(sent.uid, '7f4a1b2c3d4e5f608a9b0c1d2e3f4a5b');
   assert.equal(sent.license_key, 'K');
 });
@@ -117,7 +151,7 @@ test('activate recovers install id from license_activated error', async () => {
       }),
       { status: 200 }
     )) as any;
-  const r = await activate({ licenseKey: 'K', instanceName: 'a-b-c' });
+  const r = await activate({ licenseKey: 'K', instanceName: INSTANCE_NAME });
   assert.equal(r?.instanceId, '777');
 });
 
@@ -126,7 +160,7 @@ test('activate returns null on an unrecoverable failure', async () => {
     new Response(JSON.stringify({ error: { code: 'invalid_license_key' } }), {
       status: 200,
     })) as any;
-  assert.equal(await activate({ licenseKey: 'K', instanceName: 'a-b-c' }), null);
+  assert.equal(await activate({ licenseKey: 'K', instanceName: INSTANCE_NAME }), null);
 });
 
 test('validate active → valid + tier from plan_id', async () => {
@@ -139,7 +173,7 @@ test('validate active → valid + tier from plan_id', async () => {
       }),
       { status: 200 }
     )) as any;
-  assert.deepEqual(await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' }), {
+  assert.deepEqual(await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME }), {
     valid: true,
     tier: 'business',
     validUntil: parseDate('2027-01-01 00:00:00'),
@@ -156,7 +190,7 @@ test('validate sends the 32-char uid and license key as query params', async () 
   await validate({
     licenseKey: 'K',
     instanceId: '555',
-    instanceName: '7f4a1b2c-3d4e-5f60-8a9b-0c1d2e3f4a5b',
+    instanceName: INSTANCE_NAME,
   });
   const url = new URL(calledUrl);
   assert.equal(url.searchParams.get('uid'), '7f4a1b2c3d4e5f608a9b0c1d2e3f4a5b');
@@ -174,7 +208,7 @@ test('validate cancelled → hard-expire', async () => {
       }),
       { status: 200 }
     )) as any;
-  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
+  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME });
   assert.equal(r.status, 'cancelled');
   assert.equal(r.valid, false);
 });
@@ -185,7 +219,7 @@ test('validate past expiration → expired (UTC boundary)', async () => {
       JSON.stringify({ plan_id: FREEMIUS_PRO_PLAN_ID, expiration: '2020-01-01 00:00:00' }),
       { status: 200 }
     )) as any;
-  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
+  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME });
   assert.equal(r.status, 'expired');
   assert.equal(r.valid, false);
 });
@@ -200,7 +234,7 @@ test('validate maps definitive error codes to non-error statuses', async () => {
   for (const [code, expected] of cases) {
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ error: { code } }), { status: 200 })) as any;
-    const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
+    const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME });
     assert.equal(r.status, expected, `code ${code}`);
     assert.equal(r.valid, false);
     assert.notEqual(r.status, 'error'); // must hard-expire, never enter grace
@@ -213,7 +247,7 @@ test('validate with NO install id → status error (grace, not rejection)', asyn
     called = true;
     return new Response('{}', { status: 200 });
   }) as any;
-  const r = await validate({ licenseKey: 'K', instanceName: 'a-b' });
+  const r = await validate({ licenseKey: 'K', instanceName: INSTANCE_NAME });
   assert.deepEqual(r, { valid: false, tier: 'free', validUntil: null, status: 'error' });
   assert.equal(called, false); // never builds /installs/undefined/...
 });
@@ -222,7 +256,7 @@ test('validate connectivity → status error', async () => {
   globalThis.fetch = (async () => {
     throw new Error('offline');
   }) as any;
-  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
+  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME });
   assert.equal(r.status, 'error');
 });
 
@@ -236,7 +270,7 @@ test('deactivate posts uid+install_id+key and never throws', async () => {
     deactivate({
       licenseKey: 'K',
       instanceId: '555',
-      instanceName: '7f4a1b2c-3d4e-5f60-8a9b-0c1d2e3f4a5b',
+      instanceName: INSTANCE_NAME,
     })
   );
   assert.equal(sent.install_id, '555');
@@ -251,7 +285,7 @@ test('deactivate swallows a connectivity failure', async () => {
     throw new Error('offline');
   }) as any;
   await assert.doesNotReject(
-    deactivate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b-c' })
+    deactivate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME })
   );
 });
 
@@ -260,7 +294,33 @@ test('validate unknown plan_id fails closed to free', async () => {
     new Response(JSON.stringify({ plan_id: '999999', expiration: '2027-01-01 00:00:00' }), {
       status: 200,
     })) as any;
-  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'a-b' });
+  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME });
   assert.equal(r.valid, true);
   assert.equal(r.tier, 'free');
+});
+
+test('validate rejects a paid plan without an annual expiration', async () => {
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ plan_id: FREEMIUS_PRO_PLAN_ID, expiration: null }), {
+      status: 200,
+    })) as any;
+
+  const r = await validate({
+    licenseKey: 'K',
+    instanceId: '555',
+    instanceName: INSTANCE_NAME,
+  });
+  assert.deepEqual(r, { valid: false, tier: 'free', validUntil: null, status: 'invalid' });
+});
+
+test('validate with an invalid instance name enters grace without making a request', async () => {
+  let called = false;
+  globalThis.fetch = (async () => {
+    called = true;
+    return new Response('{}', { status: 200 });
+  }) as any;
+
+  const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: 'not-a-uuid' });
+  assert.deepEqual(r, { valid: false, tier: 'free', validUntil: null, status: 'error' });
+  assert.equal(called, false);
 });

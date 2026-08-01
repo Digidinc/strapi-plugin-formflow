@@ -10,6 +10,7 @@ import { activate as activateMorLicense, validate as validateMorLicense } from '
 import { createLicenseService, type LicenseDependencies, type LicenseService } from '../service';
 
 const NOW = new Date('2026-02-01T00:00:00.000Z');
+const MOR_INSTANCE_NAME = '7f4a1b2c-3d4e-5f60-8a9b-0c1d2e3f4a5b';
 const VALID_PRO = {
   valid: true,
   tier: 'pro' as const,
@@ -434,7 +435,7 @@ void (async () => {
         const transientResult = await validateMorLicense({
           licenseKey: 'rate-limited-key',
           instanceId: 'rate-limited-install',
-          instanceName: 'rate-limited-instance-name',
+          instanceName: MOR_INSTANCE_NAME,
         });
         assert.equal(
           transientResult.status,
@@ -486,7 +487,7 @@ void (async () => {
       });
       const slowActivation = await activateMorLicense({
         licenseKey: 'slow-activation-key',
-        instanceName: 'slow-activation-instance-name',
+        instanceName: MOR_INSTANCE_NAME,
       });
       assert.equal(
         slowActivation?.instanceId,
@@ -501,7 +502,7 @@ void (async () => {
       const slowValidation = await validateMorLicense({
         licenseKey: 'slow-validation-key',
         instanceId: 'slow-validation-install',
-        instanceName: 'slow-validation-instance-name',
+        instanceName: MOR_INSTANCE_NAME,
       });
       assert.equal(
         slowValidation.status,
@@ -542,7 +543,7 @@ void (async () => {
         validateMorLicense({
           licenseKey: 'stalled-body-key',
           instanceId: 'stalled-body-install',
-          instanceName: 'stalled-body-instance-name',
+          instanceName: MOR_INSTANCE_NAME,
         }),
         new Promise<never>((_resolve, reject) => {
           bodyTimeoutId = originalSetTimeout(

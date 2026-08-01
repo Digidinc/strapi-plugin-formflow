@@ -2,6 +2,10 @@ FormFlow Enterprise Edition License
 
 Copyright (c) 2024 Bardiya Rahimi. All rights reserved.
 
+FormFlow is developed and maintained by Bardiya Rahimi and commercially
+published by Digid Inc. Digid Inc. is authorized by the copyright holder to
+distribute and commercially license FormFlow.
+
 ---
 
 PREAMBLE
@@ -15,27 +19,34 @@ This software is source-available but NOT open source.
 
 GRANT OF RIGHTS
 
-Subject to the terms and restrictions of this License-EE, copyright holder grants
-you a limited, non-exclusive, non-transferable, non-sublicensable right to:
+Subject to the terms and restrictions of this License-EE, the copyright holder,
+acting directly or through authorized commercial licensor Digid Inc., grants you
+a limited, non-exclusive, non-transferable, non-sublicensable right to:
 
 1. VIEW the source code for evaluation, audit, and security review purposes.
 2. RUN the software in a non-production environment (local development, staging)
    for the sole purpose of evaluating whether to purchase a license.
 
-No other rights are granted unless a valid FormFlow license key has been obtained
-via purchase (see below).
+With a valid, active FormFlow subscription, you may also:
+
+3. RUN the software in production on the number of concurrent installations
+   permitted by your plan.
+4. MODIFY the covered source code solely for your own internal use. You may not
+   redistribute the original or modified covered source code.
+
+No other rights are granted.
 
 ---
 
 PRODUCTION USE REQUIRES A VALID LICENSE KEY
 
 Production use of any file covered by this License-EE requires a valid FormFlow
-license key obtained via purchase from the official FormFlow store.
+license key obtained through the official FormFlow pricing page.
 A "production environment" is any environment that serves real users, processes
 real data, or supports any business operations beyond evaluation.
 
 To use FormFlow Pro or Business features in production:
-1. Purchase a license at the official FormFlow store (TBD-before-launch).
+1. Purchase a license at https://digidinc.github.io/formflow/#pricing.
 2. Set the environment variable `FORMFLOW_LICENSE_KEY=<your_key>` in the
    host Strapi project's `.env` file.
 3. Restart the Strapi server.
@@ -60,7 +71,7 @@ The following are expressly prohibited:
 
 3. NO REMOVAL OR CIRCUMVENTION OF LICENSE CHECKS. You may not remove, disable,
    bypass, replace, or circumvent any license validation logic within ee/ code or
-   within the license service (server/src/services/license.ts). This includes but
+   within the license service (server/src/ee/license/service.ts). This includes but
    is not limited to: stubbing the license service to return active/pro/business;
    modifying the feature-tier map to lower tier requirements; patching the MoR
    client to skip remote validation; or any other technique that causes the software
@@ -118,11 +129,12 @@ Your rights under this License-EE terminate automatically, immediately, and with
 notice if:
 - You violate any restriction in this License-EE.
 - Your paid license key expires or is revoked by the copyright holder.
-- You fail to renew a subscription-based license within the applicable grace period
-  (grace applies only to connectivity failures, not to expired or revoked keys).
+- Your subscription expires and is not renewed. The connectivity grace period does
+  not extend an expired, cancelled, refunded, or revoked subscription.
 
-Upon termination, you must cease all use of ee/ files and destroy all copies in
-your possession.
+Upon termination, your right to use the covered files in production ends. You may
+retain them only under the evaluation rights above; FormFlow continues to operate
+as the free tier, and your rights in the MIT-licensed Free Core are unaffected.
 
 ---
 
@@ -140,4 +152,4 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 CONTACT
 
 For licensing inquiries, purchase information, or to report a license violation,
-contact: Bardiya Rahimi <hrahimi270@gmail.com>
+contact: Digid Inc. <info@digid.ca>

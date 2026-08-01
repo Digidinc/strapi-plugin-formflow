@@ -251,6 +251,7 @@ Both privacy options are OFF by default, so existing installs are unaffected unt
 
 - **Website:** https://digidinc.github.io/formflow
 - **Pricing & plans:** https://digidinc.github.io/formflow/#pricing
+- **Commercial support:** info@digid.ca
 - **Repository & issues:** https://github.com/Digidinc/strapi-plugin-formflow
 - **Frontend SDKs:** https://github.com/Digidinc/formflow-sdk (`@formflowjs/react`, `@formflowjs/vue`)
 
@@ -276,6 +277,10 @@ Telemetry is also disabled automatically if you've disabled Strapi's own telemet
 ## License
 
 FormFlow is **open-core**:
+
+FormFlow is developed and maintained by **Bardiya Rahimi** and commercially
+published by **Digid Inc.**, which is authorized to distribute and commercially
+license the software.
 
 - The free core — every file **except** those under an `ee/` directory — is licensed under the [MIT License](./LICENSE).
 - The premium **Enterprise Edition** code (under `server/src/ee/` and `admin/src/ee/`, powering the Pro and Business features) is source-available under the [FormFlow EE License](./LICENSE-EE). You may view and evaluate it, but **production use requires a valid license key**.
