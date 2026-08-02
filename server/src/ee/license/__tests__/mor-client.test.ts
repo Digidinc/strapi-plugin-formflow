@@ -106,7 +106,10 @@ test('morFetch: never logs a validation URL containing the license key', async (
     }) as any;
     await morFetch(url, { method: 'GET' });
 
-    assert.equal(messages.some((message) => message.includes(secret)), false);
+    assert.equal(
+      messages.some((message) => message.includes(secret)),
+      false
+    );
   } finally {
     console.warn = realWarn;
     console.error = realError;
@@ -173,12 +176,15 @@ test('validate active → valid + tier from plan_id', async () => {
       }),
       { status: 200 }
     )) as any;
-  assert.deepEqual(await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME }), {
-    valid: true,
-    tier: 'business',
-    validUntil: parseDate('2027-01-01 00:00:00'),
-    status: 'active',
-  });
+  assert.deepEqual(
+    await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME }),
+    {
+      valid: true,
+      tier: 'business',
+      validUntil: parseDate('2027-01-01 00:00:00'),
+      status: 'active',
+    }
+  );
 });
 
 test('validate sends the 32-char uid and license key as query params', async () => {
