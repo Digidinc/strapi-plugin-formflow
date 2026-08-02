@@ -28,6 +28,10 @@ one-time payment does not.
   `mapTierFromName` recognizes exactly two plan names. Anything else fails closed
   to `'free'`.
 - A valid paid license always carries a populated `expiration`; renewals extend it.
-  Because Freemius uses `null` for lifetime licenses, the adapter rejects a recognized
-  paid plan without an expiration rather than granting an unsold lifetime entitlement.
+  Because Freemius uses `null` for lifetime licenses, the adapter withholds premium
+  entitlement from a recognized paid plan that has no expiration, rather than granting
+  an unsold lifetime entitlement. It treats that as indeterminate rather than as a
+  revocation: the response is otherwise the server affirming the license, and an
+  absent or empty `expiration` must not hard-expire every paying customer at once.
+  The grace window still closes the hole, since it cannot outlive 14 days.
 - The product model stays simple: no one-time vs recurring split in the adapter.

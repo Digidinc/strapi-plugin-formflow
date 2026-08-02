@@ -242,6 +242,19 @@ export async function activate(params: MorActivateParams): Promise<MorActivateRe
     }
   }
 
+  // Say WHY activation was refused. Without this the caller only ever reports
+  // "validation unreachable", which sends an admin who has simply run out of
+  // activation slots off debugging their network. Log the code, never the upstream
+  // message — messages are free text and must not become a way for the licence key
+  // to reach the logs.
+  if (outcome.kind === 'client-error') {
+    const hint =
+      outcome.code === 'license_utilized'
+        ? ' — every activation slot for this key is in use. Deactivate the installation you no longer use from your account dashboard, then restart Strapi.'
+        : '';
+    console.warn(`[FormFlow License] Activation refused (${outcome.code})${hint || '.'}`);
+  }
+
   // Any other failure falls through to validate(), whose missing-install-id guard
   // holds entitlement in grace rather than hard-expiring a possibly-valid key.
   return null;
@@ -262,10 +275,15 @@ const GRACE: MorValidateResult = { valid: false, tier: 'free', validUntil: null,
  * Validate a license key against its Freemius install. Never throws.
  *
  * Returns `status: 'error'` for every INDETERMINATE outcome — connectivity failure,
- * timeout, 5xx, or a missing/invalid install identity — and the caller maps that to the
- * grace window. A definitive rejection from a reachable API resolves to
- * `valid: false` with a non-'error' status so the caller hard-expires immediately,
- * with NO grace.
+ * timeout, 5xx, a missing/invalid install identity, or any rejection code we do not
+ * recognize — and the caller maps that to the grace window. Only a DOCUMENTED
+ * rejection code resolves to `valid: false` with a non-'error' status, which makes
+ * the caller hard-expire immediately with NO grace.
+ *
+ * The asymmetry is deliberate. A wrong 'error' costs at most 14 more days of access;
+ * a wrong rejection cuts off a paying customer instantly. Fail-closed would also buy
+ * no security here, since anyone wanting the grace path can simply block the licence
+ * host — so unrecognized responses resolve to grace, not to revocation.
  *
  * Unlike the previous provider, Freemius returns no server-computed status, so the
  * expiry MUST be enforced here: `valid` requires no error code, `is_cancelled` not
@@ -280,7 +298,16 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
   // failed recovery holds the cached tier instead of hard-expiring a valid key.
   // (With no cache the caller still lands on free, so no entitlement leaks.)
   const uid = toUid(params.instanceName);
-  if (!params.instanceId || !uid) {
+  if (!uid) {
+    // Distinguish this from a network failure: the caller logs every 'error' as
+    // "validation unreachable", which would send anyone debugging this down the
+    // wrong path entirely.
+    console.warn(
+      '[FormFlow License] Persisted instance name is not a UUID — cannot derive the install identity.'
+    );
+    return { ...GRACE };
+  }
+  if (!params.instanceId) {
     return { ...GRACE };
   }
 
@@ -298,14 +325,20 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
   }
 
   if (outcome.kind === 'client-error') {
-    // Unknown codes fail closed to 'invalid' rather than 'error': a reachable API
-    // rejecting the key is a verdict, and must not be laundered into grace.
-    return {
-      valid: false,
-      tier: 'free',
-      validUntil: null,
-      status: ERROR_STATUS[outcome.code] ?? 'invalid',
-    };
+    // Only the documented rejection codes are a verdict on the customer's key.
+    // Anything else — a new upstream code, an argument error of ours, a
+    // seller-account problem (Freemius reports several of these as HTTP 402) — says
+    // nothing about the licence, so it must not revoke a paying customer. Grace is
+    // the safe default and costs nothing: it never refreshes the cache, so it runs
+    // out 14 days after the last SUCCESSFUL validation and then falls back to free.
+    const status = ERROR_STATUS[outcome.code];
+    if (!status) {
+      console.warn(
+        `[FormFlow License] Unrecognized licence API code "${outcome.code}" — treating as indeterminate, not as a revocation.`
+      );
+      return { ...GRACE };
+    }
+    return { valid: false, tier: 'free', validUntil: null, status };
   }
 
   const license = outcome.json ?? {};
@@ -319,11 +352,17 @@ export async function validate(params: MorValidateParams): Promise<MorValidateRe
     return { valid: false, tier: 'free', validUntil, status: 'expired' };
   }
 
-  // Freemius uses a null expiration for lifetime licenses. FormFlow sells annual
-  // subscriptions only, so a paid plan without a valid expiration must never grant
-  // premium entitlement.
+  // Freemius uses a null expiration for lifetime licences, and FormFlow sells annual
+  // subscriptions only — so a paid plan with no expiry must never grant premium
+  // entitlement. Treat it as indeterminate rather than as a revocation: the response
+  // is otherwise the server AFFIRMING the licence, and a missing/renamed/empty
+  // `expiration` field would otherwise hard-expire every paying customer at once.
+  // Grace still closes the hole, since it cannot outlive the 14-day window.
   if (tier !== 'free' && validUntil === null) {
-    return { valid: false, tier: 'free', validUntil: null, status: 'invalid' };
+    console.warn(
+      '[FormFlow License] Paid plan returned with no expiration — not an annual subscription we sell; withholding premium entitlement.'
+    );
+    return { ...GRACE };
   }
 
   return { valid: true, tier, validUntil, status: 'active' };

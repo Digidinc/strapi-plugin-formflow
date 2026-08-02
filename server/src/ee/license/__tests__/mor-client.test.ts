@@ -106,7 +106,10 @@ test('morFetch: never logs a validation URL containing the license key', async (
     }) as any;
     await morFetch(url, { method: 'GET' });
 
-    assert.equal(messages.some((message) => message.includes(secret)), false);
+    assert.equal(
+      messages.some((message) => message.includes(secret)),
+      false
+    );
   } finally {
     console.warn = realWarn;
     console.error = realError;
@@ -160,7 +163,45 @@ test('activate returns null on an unrecoverable failure', async () => {
     new Response(JSON.stringify({ error: { code: 'invalid_license_key' } }), {
       status: 200,
     })) as any;
-  assert.equal(await activate({ licenseKey: 'K', instanceName: INSTANCE_NAME }), null);
+  const realWarn = console.warn;
+  console.warn = () => {};
+  try {
+    assert.equal(await activate({ licenseKey: 'K', instanceName: INSTANCE_NAME }), null);
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
+test('activate reports WHY it was refused, without echoing the upstream message', async () => {
+  // Running out of activation slots is the likeliest support case, and the caller
+  // only ever logs "validation unreachable" — so the reason has to surface here.
+  const realWarn = console.warn;
+  const messages: string[] = [];
+  const secret = 'customer-license-key';
+  try {
+    console.warn = (...args: unknown[]) => messages.push(args.map(String).join(' '));
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          error: { code: 'license_utilized', message: `quota reached for ${secret}` },
+        }),
+        { status: 400 }
+      )) as any;
+
+    assert.equal(await activate({ licenseKey: secret, instanceName: INSTANCE_NAME }), null);
+    assert.equal(
+      messages.some((m) => m.includes('license_utilized')),
+      true,
+      'the refusal code must be logged'
+    );
+    assert.equal(
+      messages.some((m) => m.includes(secret)),
+      false,
+      'the upstream message must never be logged — it could carry the key'
+    );
+  } finally {
+    console.warn = realWarn;
+  }
 });
 
 test('validate active → valid + tier from plan_id', async () => {
@@ -173,12 +214,15 @@ test('validate active → valid + tier from plan_id', async () => {
       }),
       { status: 200 }
     )) as any;
-  assert.deepEqual(await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME }), {
-    valid: true,
-    tier: 'business',
-    validUntil: parseDate('2027-01-01 00:00:00'),
-    status: 'active',
-  });
+  assert.deepEqual(
+    await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME }),
+    {
+      valid: true,
+      tier: 'business',
+      validUntil: parseDate('2027-01-01 00:00:00'),
+      status: 'active',
+    }
+  );
 });
 
 test('validate sends the 32-char uid and license key as query params', async () => {
@@ -224,12 +268,12 @@ test('validate past expiration → expired (UTC boundary)', async () => {
   assert.equal(r.valid, false);
 });
 
-test('validate maps definitive error codes to non-error statuses', async () => {
+test('validate maps documented rejection codes to non-error statuses', async () => {
   const cases: Array<[string, string]> = [
     ['invalid_license_key', 'invalid'],
     ['license_expired', 'expired'],
     ['license_utilized', 'utilized'],
-    ['something_unknown', 'invalid'],
+    ['license_error', 'invalid'],
   ];
   for (const [code, expected] of cases) {
     globalThis.fetch = (async () =>
@@ -238,6 +282,32 @@ test('validate maps definitive error codes to non-error statuses', async () => {
     assert.equal(r.status, expected, `code ${code}`);
     assert.equal(r.valid, false);
     assert.notEqual(r.status, 'error'); // must hard-expire, never enter grace
+  }
+});
+
+test('validate treats UNRECOGNIZED rejection codes as grace, not revocation', async () => {
+  // Freemius returns HTTP 402 for argument and seller-account errors, and may add
+  // new codes at any time. None of those is a verdict on the customer's key, so
+  // none may hard-expire a paying install.
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    for (const [code, httpStatus] of [
+      ['something_unknown', 200],
+      ['first_name_required', 402],
+      ['http_404', 404],
+    ] as Array<[string, number]>) {
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ error: { code } }), { status: httpStatus })) as any;
+      const r = await validate({ licenseKey: 'K', instanceId: '555', instanceName: INSTANCE_NAME });
+      assert.deepEqual(
+        r,
+        { valid: false, tier: 'free', validUntil: null, status: 'error' },
+        `code ${code} must resolve to grace`
+      );
+    }
+  } finally {
+    console.warn = originalWarn;
   }
 });
 
@@ -299,18 +369,34 @@ test('validate unknown plan_id fails closed to free', async () => {
   assert.equal(r.tier, 'free');
 });
 
-test('validate rejects a paid plan without an annual expiration', async () => {
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ plan_id: FREEMIUS_PRO_PLAN_ID, expiration: null }), {
-      status: 200,
-    })) as any;
+test('validate withholds premium for a paid plan with no expiration, without revoking', async () => {
+  // A null expiration means a lifetime licence, which we do not sell — so no premium
+  // entitlement. But the response is otherwise the server AFFIRMING the licence, so
+  // this resolves to grace: an absent or empty `expiration` field must not hard-expire
+  // every paying customer at once. Grace still closes the hole after 14 days.
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    for (const expiration of [null, '']) {
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ plan_id: FREEMIUS_PRO_PLAN_ID, expiration }), {
+          status: 200,
+        })) as any;
 
-  const r = await validate({
-    licenseKey: 'K',
-    instanceId: '555',
-    instanceName: INSTANCE_NAME,
-  });
-  assert.deepEqual(r, { valid: false, tier: 'free', validUntil: null, status: 'invalid' });
+      const r = await validate({
+        licenseKey: 'K',
+        instanceId: '555',
+        instanceName: INSTANCE_NAME,
+      });
+      assert.deepEqual(
+        r,
+        { valid: false, tier: 'free', validUntil: null, status: 'error' },
+        `expiration ${JSON.stringify(expiration)}`
+      );
+    }
+  } finally {
+    console.warn = originalWarn;
+  }
 });
 
 test('validate with an invalid instance name enters grace without making a request', async () => {
