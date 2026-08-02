@@ -242,6 +242,19 @@ export async function activate(params: MorActivateParams): Promise<MorActivateRe
     }
   }
 
+  // Say WHY activation was refused. Without this the caller only ever reports
+  // "validation unreachable", which sends an admin who has simply run out of
+  // activation slots off debugging their network. Log the code, never the upstream
+  // message — messages are free text and must not become a way for the licence key
+  // to reach the logs.
+  if (outcome.kind === 'client-error') {
+    const hint =
+      outcome.code === 'license_utilized'
+        ? ' — every activation slot for this key is in use. Deactivate the installation you no longer use from your account dashboard, then restart Strapi.'
+        : '';
+    console.warn(`[FormFlow License] Activation refused (${outcome.code})${hint || '.'}`);
+  }
+
   // Any other failure falls through to validate(), whose missing-install-id guard
   // holds entitlement in grace rather than hard-expiring a possibly-valid key.
   return null;

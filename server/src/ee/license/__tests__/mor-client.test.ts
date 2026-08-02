@@ -163,7 +163,45 @@ test('activate returns null on an unrecoverable failure', async () => {
     new Response(JSON.stringify({ error: { code: 'invalid_license_key' } }), {
       status: 200,
     })) as any;
-  assert.equal(await activate({ licenseKey: 'K', instanceName: INSTANCE_NAME }), null);
+  const realWarn = console.warn;
+  console.warn = () => {};
+  try {
+    assert.equal(await activate({ licenseKey: 'K', instanceName: INSTANCE_NAME }), null);
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
+test('activate reports WHY it was refused, without echoing the upstream message', async () => {
+  // Running out of activation slots is the likeliest support case, and the caller
+  // only ever logs "validation unreachable" — so the reason has to surface here.
+  const realWarn = console.warn;
+  const messages: string[] = [];
+  const secret = 'customer-license-key';
+  try {
+    console.warn = (...args: unknown[]) => messages.push(args.map(String).join(' '));
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          error: { code: 'license_utilized', message: `quota reached for ${secret}` },
+        }),
+        { status: 400 }
+      )) as any;
+
+    assert.equal(await activate({ licenseKey: secret, instanceName: INSTANCE_NAME }), null);
+    assert.equal(
+      messages.some((m) => m.includes('license_utilized')),
+      true,
+      'the refusal code must be logged'
+    );
+    assert.equal(
+      messages.some((m) => m.includes(secret)),
+      false,
+      'the upstream message must never be logged — it could carry the key'
+    );
+  } finally {
+    console.warn = realWarn;
+  }
 });
 
 test('validate active → valid + tier from plan_id', async () => {
