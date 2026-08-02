@@ -15,6 +15,22 @@ FormFlow lets you build configurable forms visually in the Strapi admin panel an
 
 ---
 
+## Why FormFlow
+
+**Your submissions stay in your own database.** Not in a third-party form service. No per-submission pricing, no separate data-processing agreement, nobody else holding your leads.
+
+**Genuinely headless — not an embedded widget.** Fetch a JSON schema, post the values back. Works with React, Vue, Next.js, Nuxt, Astro, SvelteKit, or plain `fetch`. Official React and Vue SDKs ship alongside it — use them or ignore them. You own every pixel.
+
+**The free core is a real product, not a trial.** MIT-licensed, with unlimited forms and unlimited submissions. No time limit, no watermark, no "upgrade to export your own data" — CSV and JSON export are built in.
+
+**Your editors build the forms, not you.** Drag-and-drop builder, 20+ field types, per-field validation, and live preview, all inside the Strapi admin your team already uses. One fewer thing routed through a developer.
+
+**Spam is handled on day one.** Honeypot, per-form rate limiting, and reCAPTCHA v2 are included and free.
+
+**Submissions don't just sit there.** An inbox with statuses and bulk actions, email notifications on submit, and a REST API — plus webhooks and integrations when you outgrow that.
+
+---
+
 ## Features
 
 ### Form builder & field types
@@ -32,7 +48,7 @@ A drag-and-drop form builder with a rich field registry:
 ### Validation & logic
 
 - Per-field validation rules with custom error messages
-- Conditional visibility based on another field's value (**Pro**; also included in **Business**)
+- Conditional visibility based on another field's value
 - Multi-step / wizard forms with per-step grouping and validation
 
 ### Submissions
@@ -55,7 +71,7 @@ A drag-and-drop form builder with a rich field registry:
 ### Notifications & integrations
 
 - Email notifications on submission (configurable recipients, subject, reply-to, and templates)
-- Customer-owned Telegram rich-message notifications (**Free: 1 connection, Pro: 2, Business: 4**) with tokens managed from the Strapi admin; outbound-only, with no deployment or webhook required ([setup guide](docs/telegram.md))
+- Customer-owned Telegram rich-message notifications, with tokens managed from the Strapi admin; outbound-only, with no deployment or webhook required ([setup guide](docs/telegram.md))
 - Outgoing webhooks (POST/PUT, custom headers, `submission.created` / `submission.updated` events)
 - Pre-built integrations: **Slack, Google Sheets, Mailchimp, HubSpot, Notion, Zapier, and Make**
 
@@ -244,6 +260,31 @@ Both privacy options are OFF by default, so existing installs are unaffected unt
 **Avoiding it:** the plugin stores a stable installation identity in the Strapi database, so ordinary restarts, redeploys, and code updates reuse the same slot and never consume a new one. Only a database reset, a license-key change, or a move to a different host creates a new registration. If you routinely rebuild environments (ephemeral CI, preview deployments), contact support to raise your activation quota.
 
 **If your license lapses:** a revoked, cancelled, or expired key removes premium features at the next license check — within 24 hours, or immediately if an administrator refreshes the license from the FormFlow settings page. The 14-day grace period covers **network outages only**: if the license service is unreachable, premium features keep working from the cached entitlement. **Your forms, submissions, and data are never affected** — only premium features are gated, and the free tier stays fully functional.
+
+---
+
+## What's free, and what isn't
+
+Everything above is free unless this table says otherwise. The free tier is MIT-licensed and production-ready — unlimited forms, unlimited submissions, no expiry — so you can ship on it and never pay us anything.
+
+| | Free | Pro | Business |
+| --- | :---: | :---: | :---: |
+| Forms & submissions | Unlimited | Unlimited | Unlimited |
+| Field types | All standard, layout, and file upload | + signature, rating/NPS, address + map, rich text, calculated, payment | Everything in Pro |
+| Validation rules | ✓ | ✓ | ✓ |
+| Conditional logic & multi-step forms | | ✓ | ✓ |
+| Submission inbox, statuses, bulk actions | ✓ | ✓ | ✓ |
+| Export | CSV, JSON | + Excel, PDF, scheduled exports | Everything in Pro |
+| Email notifications | ✓ | + autoresponders, custom templates, white-label | Everything in Pro |
+| Anti-spam | Honeypot, rate limiting, reCAPTCHA v2 | + reCAPTCHA v3, Turnstile, hCaptcha, IP blocklist | Everything in Pro |
+| Webhooks & integrations (Slack, Sheets, Mailchimp, HubSpot, Notion, Zapier, Make) | | ✓ | ✓ |
+| Save & resume, analytics | | ✓ | ✓ |
+| Telegram notifications | 1 connection | 2 connections | 4 connections |
+| GDPR retention, IP anonymization, consent field, audit log | | | ✓ |
+| Approval workflow, multi-language forms | | | ✓ |
+| RBAC, headless REST API, React & Vue SDKs | ✓ | ✓ | ✓ |
+
+Paid plans are annual and priced per project. See [pricing](https://digidinc.github.io/formflow/#pricing) for current rates, or install and use the free tier for as long as you like — no account and no credit card required.
 
 ---
 
