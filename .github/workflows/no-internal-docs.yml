@@ -1,0 +1,26 @@
+name: no-internal-docs
+
+# The only bypass-proof guarantee that maintainer-only docs stay out of this
+# public repo. .gitignore and the pre-commit hook are local conveniences; this
+# runs on every push and pull request, including commits made in the web UI or
+# from a machine without the hook installed.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if maintainer-only docs are tracked
+        run: |
+          matches=$(git ls-files -- CLAUDE.md architecture.md docs 'docs/**' \
+            .superpowers .omx .claude .agents .codex)
+          if [ -n "$matches" ]; then
+            echo "::error::These paths belong in Digidinc/formflow-internal, not here:"
+            echo "$matches"
+            exit 1
+          fi
+          echo "OK - no maintainer-only docs tracked."

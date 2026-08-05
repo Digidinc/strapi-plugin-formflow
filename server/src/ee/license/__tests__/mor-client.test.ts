@@ -15,6 +15,7 @@ import {
   ENDPOINT_BASE,
   FREEMIUS_PRO_PLAN_ID,
   FREEMIUS_BUSINESS_PLAN_ID,
+  FREEMIUS_AGENCY_PLAN_ID,
 } from '../mor-client';
 
 /** Restore the real fetch after stubbing it, so tests never leak into each other. */
@@ -27,12 +28,28 @@ test.afterEach(() => {
 test('mapTier: plan_id → tier, unknown → free', () => {
   assert.equal(mapTier(FREEMIUS_PRO_PLAN_ID), 'pro');
   assert.equal(mapTier(FREEMIUS_BUSINESS_PLAN_ID), 'business');
+  // Agency is a volume SKU over the Business feature set, not its own tier.
+  assert.equal(mapTier(FREEMIUS_AGENCY_PLAN_ID), 'business');
   assert.equal(mapTier('999999'), 'free');
   assert.equal(mapTier(null), 'free');
 });
 
-test('mapTierFromName: business beats pro, else free', () => {
+test('mapTier: a null/empty plan_id can never inherit a real plan slot', () => {
+  // Guards the Agency placeholder (and any future one): if a plan id constant were
+  // ever '' , `String(planId ?? '')` would make a null plan_id resolve to that plan.
+  assert.notEqual(FREEMIUS_PRO_PLAN_ID, '');
+  assert.notEqual(FREEMIUS_BUSINESS_PLAN_ID, '');
+  assert.notEqual(FREEMIUS_AGENCY_PLAN_ID, '');
+  assert.equal(mapTier(''), 'free');
+  assert.equal(mapTier(undefined), 'free');
+});
+
+test('mapTierFromName: business and agency beat pro, else free', () => {
   assert.equal(mapTierFromName('Business Annual'), 'business');
+  assert.equal(mapTierFromName('Agency'), 'business');
+  assert.equal(mapTierFromName('Agency Annual'), 'business');
+  // Matched before 'pro', so a compound name cannot be downgraded.
+  assert.equal(mapTierFromName('Agency Pro'), 'business');
   assert.equal(mapTierFromName('Pro'), 'pro');
   assert.equal(mapTierFromName('Starter'), 'free');
   assert.equal(mapTierFromName(undefined), 'free');
