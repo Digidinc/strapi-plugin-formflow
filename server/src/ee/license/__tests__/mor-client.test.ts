@@ -28,7 +28,7 @@ test.afterEach(() => {
 test('mapTier: plan_id → tier, unknown → free', () => {
   assert.equal(mapTier(FREEMIUS_PRO_PLAN_ID), 'pro');
   assert.equal(mapTier(FREEMIUS_BUSINESS_PLAN_ID), 'business');
-  // Agency is a volume SKU over the Business feature set — ADR-0003.
+  // Agency is a volume SKU over the Business feature set, not its own tier.
   assert.equal(mapTier(FREEMIUS_AGENCY_PLAN_ID), 'business');
   assert.equal(mapTier('999999'), 'free');
   assert.equal(mapTier(null), 'free');

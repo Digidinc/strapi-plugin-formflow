@@ -56,7 +56,10 @@ export const FREEMIUS_BUSINESS_PLAN_ID = '59830';
 /**
  * Agency is a volume SKU, not an entitlement tier: it sells the Business feature
  * set with a larger activation quota, and that quota is enforced by Freemius
- * server-side. It therefore maps to the `business` tier — see ADR-0003.
+ * server-side. It therefore maps to the `business` tier, and `Tier` deliberately
+ * stays 'free' | 'pro' | 'business' — an 'agency' tier would thread a fourth
+ * column through the limit, feature and rank maps to express an entitlement
+ * identical to Business.
  */
 export const FREEMIUS_AGENCY_PLAN_ID = '60487';
 
