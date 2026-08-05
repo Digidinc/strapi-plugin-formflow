@@ -5,7 +5,7 @@
 # This hook is convenience, NOT the guarantee: hooks are local, are not cloned,
 # and are skippable with `--no-verify`. The enforcement that cannot be bypassed
 # is .github/workflows/no-internal-docs.yml, which runs on every push and PR.
-staged=$(git diff --cached --name-only --diff-filter=d | grep -E '^(CLAUDE\.md|architecture\.md|docs(/|$))' || true)
+staged=$(git diff --cached --name-only --diff-filter=d | grep -E '^(CLAUDE\.md|architecture\.md|docs(/|$)|\.(superpowers|omx|claude|agents|codex)(/|$))' || true)
 if [ -n "$staged" ]; then
   echo "pre-commit: these paths must not be committed to the public repo:" >&2
   echo "$staged" | sed 's/^/  /' >&2

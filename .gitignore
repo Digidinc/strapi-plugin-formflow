@@ -152,5 +152,13 @@ coverage
 /CLAUDE.md
 /architecture.md
 /docs
+# Agent tooling state. Same arrangement: real files live in the private repo,
+# symlinked in. Previously .omx survived only on .git/info/exclude, which is
+# local to one clone and never shared — these entries make that durable.
+/.superpowers
+/.omx
+/.claude
+/.agents
+/.codex
 # Vendored third-party API spec used only while developing the adapter.
 openapi.yaml
