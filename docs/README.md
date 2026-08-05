@@ -11,6 +11,7 @@ them.
 ## Decisions (ADRs)
 - [ADR-0001 — Merchant of Record: Freemius](decisions/0001-merchant-of-record-freemius.md)
 - [ADR-0002 — Annual-only pricing, no lifetime](decisions/0002-annual-only-no-lifetime.md)
+- [ADR-0003 — Price points and the Agency volume SKU](decisions/0003-pricing-tiers-and-agency-sku.md)
 
 ## Subsystems
 - [Telegram integration](telegram.md)

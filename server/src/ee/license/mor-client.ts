@@ -53,6 +53,12 @@ export interface MorDeactivateParams {
 export const FREEMIUS_PRODUCT_ID = '34764';
 export const FREEMIUS_PRO_PLAN_ID = '59829';
 export const FREEMIUS_BUSINESS_PLAN_ID = '59830';
+/**
+ * Agency is a volume SKU, not an entitlement tier: it sells the Business feature
+ * set with a larger activation quota, and that quota is enforced by Freemius
+ * server-side. It therefore maps to the `business` tier — see ADR-0003.
+ */
+export const FREEMIUS_AGENCY_PLAN_ID = '60487';
 
 /** Freemius API base. */
 export const ENDPOINT_BASE = 'https://api.freemius.com/v1';
@@ -72,6 +78,7 @@ export function toUid(instanceName: string): string | null {
 const PLAN_TIER: Record<string, Tier> = {
   [FREEMIUS_PRO_PLAN_ID]: 'pro',
   [FREEMIUS_BUSINESS_PLAN_ID]: 'business',
+  [FREEMIUS_AGENCY_PLAN_ID]: 'business',
 };
 
 /**
@@ -87,10 +94,14 @@ export function mapTier(planId: string | number | null | undefined): Tier {
  * Map a plan NAME to a plugin tier — used by activate(), whose response carries
  * `license_plan_name` but no `plan_id`. Never trust a client-supplied tier: the name
  * comes from the server response. `business` wins over `pro` when both appear.
+ *
+ * `agency` resolves to the `business` tier: Agency sells the Business feature set
+ * with a larger activation quota, and quota is Freemius's to enforce, not ours.
+ * It is matched before `pro` so a name like "Agency Pro" cannot be downgraded.
  */
 export function mapTierFromName(name: string | null | undefined): Tier {
   const v = (name ?? '').toLowerCase();
-  if (v.includes('business')) return 'business';
+  if (v.includes('business') || v.includes('agency')) return 'business';
   if (v.includes('pro')) return 'pro';
   return 'free';
 }

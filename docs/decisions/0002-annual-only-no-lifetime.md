@@ -1,8 +1,14 @@
 # ADR-0002: Annual-only pricing — no lifetime plan
 
-- **Status:** Accepted (2026-07-29)
+- **Status:** Accepted (2026-07-29); partially amended by [ADR-0003](0003-pricing-tiers-and-agency-sku.md) (2026-08-05)
 - **Deciders:** FormFlow maintainers
-- **Related:** [ADR-0001](0001-merchant-of-record-freemius.md)
+- **Related:** [ADR-0001](0001-merchant-of-record-freemius.md), [ADR-0003](0003-pricing-tiers-and-agency-sku.md)
+
+> **Amendment.** ADR-0003 adds a third paid plan, **Agency** — a volume SKU carrying
+> the Business feature set with a larger activation quota. The plan count below, and
+> the "exactly two entries" / "exactly two plan names" consequence, are superseded by
+> ADR-0003. Everything else here — **annual-only, no lifetime SKU**, and the handling
+> of a paid plan with an absent `expiration` — remains in force.
 
 ## Context
 

@@ -11,6 +11,7 @@ FormFlow is a Strapi v5 plugin for creating dynamic, configurable forms through 
 **Decisions (ADRs)** — read before changing licensing/monetization:
 - [ADR-0001](docs/decisions/0001-merchant-of-record-freemius.md) — Merchant of Record is **Freemius**.
 - [ADR-0002](docs/decisions/0002-annual-only-no-lifetime.md) — **Annual-only** pricing; no lifetime plan.
+- [ADR-0003](docs/decisions/0003-pricing-tiers-and-agency-sku.md) — Price points (Pro $149 / Business $449 / **Agency $999**, annual). Agency is a **volume SKU, not a tier**: it maps to `business` and its quota is enforced by Freemius, so `Tier` stays `'free' | 'pro' | 'business'`.
 
 **Licensing / MoR:** the EE engine is in `server/src/ee/license/`. `service.ts` is the provider-agnostic entitlement state machine (do not make it provider-specific); `mor-client.ts` is the sole MoR adapter (Freemius) and is the **only** place license HTTP lives. Invariant: it ships **no seller secret** (no `Authorization` header), enforced by `scripts/check-license-no-secret.mjs`. Tier derives only from the server response.
 
