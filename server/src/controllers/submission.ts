@@ -432,7 +432,7 @@ const submissionController = ({ strapi }: { strapi: Core.Strapi }) => ({
           ctx.body = {
             error: 'Payment Required',
             message: 'Advanced export (Excel/PDF) requires a Pro license.',
-            upsell: 'https://digidinc.github.io/formflow/#pricing',
+            upsell: 'https://formflow.digid.ca/#pricing',
           };
           return;
         }
@@ -581,7 +581,7 @@ const submissionController = ({ strapi }: { strapi: Core.Strapi }) => ({
       ctx.body = {
         error: 'Payment Required',
         message: 'Scheduled export requires a Pro license.',
-        upsell: 'https://digidinc.github.io/formflow/#pricing',
+        upsell: 'https://formflow.digid.ca/#pricing',
       };
       return;
     }

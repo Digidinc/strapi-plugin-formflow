@@ -36,7 +36,7 @@
 
 ### Patch Changes
 
-- 8953772: Point upgrade/upsell links and repository metadata to the new Digidinc org after the GitHub org migration. The runtime 402 upgrade URLs, the admin upsell `PURCHASE_URL`, the README, and `package.json` now use `github.com/Digidinc/…` and `digidinc.github.io/formflow`; the retired `hrahimi270.github.io` Pages URL previously left these upgrade links dead.
+- 8953772: Point upgrade/upsell links and repository metadata to the new Digidinc org after the GitHub org migration. The runtime 402 upgrade URLs, the admin upsell `PURCHASE_URL`, the README, and `package.json` now use `github.com/Digidinc/…` and `formflow.digid.ca`; the retired GitHub Pages URL previously left these upgrade links dead.
 
 ## 1.2.0
 
@@ -81,13 +81,13 @@
 
 ### Patch Changes
 
-- c7ceb8e: Correct the website and pricing links to the renamed GitHub Pages path (`https://hrahimi270.github.io/formflow/#pricing`) after the public site repo was renamed from `formflow-website` to `formflow`. Updates the server 402 upgrade responses, the admin upsell UI (the shared `PURCHASE_URL`), and the README links.
+- c7ceb8e: Correct the website and pricing links to the current FormFlow site (`https://formflow.digid.ca/#pricing`). Updates the server 402 upgrade responses, the admin upsell UI (the shared `PURCHASE_URL`), and the README links.
 
 ## 1.0.4
 
 ### Patch Changes
 
-- 37d8d68: Point all upgrade/upsell links to the public website pricing page (`https://hrahimi270.github.io/formflow-website/#pricing`) instead of the placeholder `formflow.dev`. This updates the server 402 upgrade responses (form create/update, advanced export and other gated submission endpoints) and the admin upsell UI (the shared `PURCHASE_URL` used by `UpsellCard`, gated buttons, and the Pro field-type prompt). Also adds Website and Pricing links to the README.
+- 37d8d68: Point all upgrade/upsell links to the public website pricing page (`https://formflow.digid.ca/#pricing`) instead of the placeholder `formflow.dev`. This updates the server 402 upgrade responses (form create/update, advanced export and other gated submission endpoints) and the admin upsell UI (the shared `PURCHASE_URL` used by `UpsellCard`, gated buttons, and the Pro field-type prompt). Also adds Website and Pricing links to the README.
 
 ## 1.0.3
 

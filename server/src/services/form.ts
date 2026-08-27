@@ -163,7 +163,7 @@ export async function validateTelegramFormSettings(
     message: 'The selected Telegram connection is inactive on the current plan.',
     details: {
       feature: 'telegramConnections', resolution: license.resolution?.() ?? 'unresolved',
-      upgradeUrl: 'https://digidinc.github.io/formflow/#pricing',
+      upgradeUrl: 'https://formflow.digid.ca/#pricing',
     },
   };
   return null;

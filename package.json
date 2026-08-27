@@ -125,7 +125,7 @@
     "type": "git",
     "url": "https://github.com/Digidinc/strapi-plugin-formflow.git"
   },
-  "homepage": "https://github.com/Digidinc/strapi-plugin-formflow#readme",
+  "homepage": "https://formflow.digid.ca",
   "bugs": {
     "url": "https://github.com/Digidinc/strapi-plugin-formflow/issues"
   },

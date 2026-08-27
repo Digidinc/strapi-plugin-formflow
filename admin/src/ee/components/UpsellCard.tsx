@@ -8,7 +8,7 @@ import { accessPresentation, type FeatureAccess } from '../license-state';
 import { ProBadge } from './ProBadge';
 
 /** Single upsell destination — imported by every Phase 1+ gating point. */
-export const PURCHASE_URL = 'https://digidinc.github.io/formflow/#pricing';
+export const PURCHASE_URL = 'https://formflow.digid.ca/#pricing';
 
 export interface UpsellCardProps {
   /** Optional explicit access state; otherwise resolved from the license context. */
