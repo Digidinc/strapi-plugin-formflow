@@ -31,7 +31,7 @@ export interface Context {
   throw: (status: number, error: unknown) => never;
 }
 
-const UPGRADE_URL = 'https://digidinc.github.io/formflow/#pricing';
+const UPGRADE_URL = 'https://formflow.digid.ca/#pricing';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

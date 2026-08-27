@@ -284,14 +284,14 @@ Everything above is free unless this table says otherwise. The free tier is MIT-
 | Approval workflow, multi-language forms | | | ✓ |
 | RBAC, headless REST API, React & Vue SDKs | ✓ | ✓ | ✓ |
 
-Paid plans are annual and priced per project. See [pricing](https://digidinc.github.io/formflow/#pricing) for current rates, or install and use the free tier for as long as you like — no account and no credit card required.
+Paid plans are annual and priced per project. See [pricing](https://formflow.digid.ca/#pricing) for current rates, or install and use the free tier for as long as you like — no account and no credit card required.
 
 ---
 
 ## Links
 
-- **Website:** https://digidinc.github.io/formflow
-- **Pricing & plans:** https://digidinc.github.io/formflow/#pricing
+- **Website:** https://formflow.digid.ca
+- **Pricing & plans:** https://formflow.digid.ca/#pricing
 - **Commercial support:** info@digid.ca
 - **Repository & issues:** https://github.com/Digidinc/strapi-plugin-formflow
 - **Frontend SDKs:** https://github.com/Digidinc/formflow-sdk (`@formflowjs/react`, `@formflowjs/vue`)

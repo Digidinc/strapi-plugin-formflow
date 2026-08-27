@@ -46,7 +46,7 @@ A "production environment" is any environment that serves real users, processes
 real data, or supports any business operations beyond evaluation.
 
 To use FormFlow Pro or Business features in production:
-1. Purchase a license at https://digidinc.github.io/formflow/#pricing.
+1. Purchase a license at https://formflow.digid.ca/#pricing.
 2. Set the environment variable `FORMFLOW_LICENSE_KEY=<your_key>` in the
    host Strapi project's `.env` file.
 3. Restart the Strapi server.
