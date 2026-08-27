@@ -1,5 +1,11 @@
 # @formflowjs/strapi-plugin-formflow
 
+## 1.4.1
+
+### Patch Changes
+
+- cf43a76: Point website, pricing, and in-product upgrade links to `https://formflow.digid.ca`.
+
 ## 1.4.0
 
 ### Minor Changes
