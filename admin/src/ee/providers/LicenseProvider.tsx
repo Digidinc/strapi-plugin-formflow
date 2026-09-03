@@ -17,6 +17,21 @@ import {
 
 const VERIFICATION_TIMEOUT_MS = 10_000;
 
+/**
+ * Last snapshot the server settled on during this browser session.
+ *
+ * Each menu link is a sibling route mount, so moving between FormFlow pages
+ * unmounts and remounts this provider. Seeding from here keeps already-resolved
+ * access stable instead of regressing to `checking` on every navigation, which
+ * would flash the status notice and briefly disable premium controls.
+ *
+ * This is the cross-mount form of the guarantee `refreshStartResolution` already
+ * makes within a single mount. It is memory-only — never persisted, and dropped
+ * on reload — and it cannot over-grant: the provider still re-fetches on every
+ * mount, and the server independently gates every premium action.
+ */
+let lastSettledSnapshot: LicenseSnapshot | null = null;
+
 function normalizeError(cause: unknown): Error {
   return cause instanceof Error ? cause : new Error(String(cause));
 }
@@ -32,9 +47,11 @@ function verificationTimeout(): Error {
  */
 const LicenseProvider = ({ children }: { children: React.ReactNode }) => {
   const { get, post } = useFetchClient();
-  const [snapshot, setSnapshot] = useState<LicenseSnapshot | null>(null);
-  const [resolution, setResolution] = useState<LicenseResolution>('checking');
-  const [isLoading, setIsLoading] = useState(true);
+  const [snapshot, setSnapshot] = useState<LicenseSnapshot | null>(lastSettledSnapshot);
+  const [resolution, setResolution] = useState<LicenseResolution>(
+    lastSettledSnapshot?.resolution ?? 'checking'
+  );
+  const [isLoading, setIsLoading] = useState(lastSettledSnapshot === null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(false);
@@ -100,6 +117,7 @@ const LicenseProvider = ({ children }: { children: React.ReactNode }) => {
           : firstSnapshot;
       })()
         .then((next) => {
+          lastSettledSnapshot = next;
           if (!mountedRef.current) return;
           setSnapshot(next);
           setResolution(next.resolution);
