@@ -1,5 +1,11 @@
 # @formflowjs/strapi-plugin-formflow
 
+## 1.4.2
+
+### Patch Changes
+
+- af58671: Fix the FormFlow main menu link crashing in production admin builds with `Cannot destructure property 'App' of '(intermediate value)' as it is undefined`. The loader now returns `import('./pages/App').then(({ App }) => ({ default: App }))`, matching the Settings and Compliance links, so Rollup no longer rewrites the call site into a shim that drops the chunk namespace.
+
 ## 1.4.1
 
 ### Patch Changes
