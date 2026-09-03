@@ -248,16 +248,9 @@ export const ConditionalLogicBuilder = ({
   let body: React.ReactNode;
   switch (bodyState) {
     case 'checking':
-      body = (
-        <Box padding={3} background="neutral100" hasRadius role="status">
-          <Typography variant="pi" textColor="neutral600">
-            {formatMessage({
-              id: getTranslation('license.checking'),
-              defaultMessage: 'Checking FormFlow license…',
-            })}
-          </Typography>
-        </Box>
-      );
+      // Silent: the rule editor stays withheld while access is unresolved, but
+      // a background check the author did not start is not worth announcing.
+      body = null;
       break;
     case 'unavailable':
       body = <LicenseStatusNotice compact />;
@@ -348,7 +341,7 @@ export const ConditionalLogicBuilder = ({
             defaultMessage: 'Show this field based on another field’s submitted value.',
           })}
           titleAdornment={
-            access !== 'entitled' ? <ProBadge feature="conditionalLogic" /> : undefined
+            access === 'unentitled' ? <ProBadge feature="conditionalLogic" /> : undefined
           }
         />
       </Box>

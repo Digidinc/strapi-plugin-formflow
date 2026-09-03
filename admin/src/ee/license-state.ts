@@ -4,7 +4,7 @@ import { FEATURE_TIER, type EntitlementLimit, type FeatureKey, type LimitKey } f
 
 export type LicenseResolution = 'checking' | 'resolved' | 'unavailable';
 export type FeatureAccess = 'checking' | 'entitled' | 'unentitled' | 'unavailable';
-export type LicenseNoticeIdentity = 'checking' | 'unavailable' | `grace:${string}` | null;
+export type LicenseNoticeIdentity = 'unavailable' | `grace:${string}` | null;
 
 export interface AccessPresentation {
   disabled: boolean;
@@ -97,7 +97,11 @@ export function licenseNoticeIdentity(
   state: LicenseSnapshot['state'],
   graceUntil: string | null
 ): LicenseNoticeIdentity {
-  if (resolution === 'checking') return 'checking';
+  // `checking` is deliberately silent. It reports a background request the
+  // administrator never initiated, blocks nothing, and settles on its own, so
+  // surfacing it only produces a flash on every FormFlow navigation. Degraded
+  // (`unavailable`) and time-limited (`grace`) access still need to be told.
+  if (resolution === 'checking') return null;
   if (resolution === 'unavailable') return 'unavailable';
   if (state === 'grace') return `grace:${graceUntil ?? 'missing'}`;
   return null;
@@ -131,9 +135,16 @@ export function premiumMutationPolicy(access: FeatureAccess): PremiumMutationPol
   };
 }
 
-/** Keep confirmed access stable while a replacement snapshot is being fetched. */
+/**
+ * Keep any settled access stable while a replacement snapshot is being fetched.
+ *
+ * `unavailable` is preserved as well as `resolved`: a check in flight renders
+ * nothing, so flipping to `checking` would unmount the warning together with the
+ * Retry button the administrator just pressed, leaving the click with no visible
+ * effect. `isRefreshing` carries the in-flight signal instead.
+ */
 export function refreshStartResolution(current: LicenseResolution): LicenseResolution {
-  return current === 'resolved' ? 'resolved' : 'checking';
+  return current === 'checking' ? 'checking' : current;
 }
 
 /** Retain last-known confirmed access when only its replacement request fails. */

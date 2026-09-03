@@ -51,7 +51,7 @@ export const GatedButton = ({
     presentation.reason === 'checking'
       ? formatMessage({
           id: 'formflow.license.checking',
-          defaultMessage: 'Checking FormFlow license…',
+          defaultMessage: 'Unavailable while FormFlow verifies your license',
         })
       : presentation.reason === 'unavailable'
         ? formatMessage({

@@ -65,6 +65,12 @@ function requirePattern(file: string, source: string, pattern: RegExp, message: 
   }
 }
 
+function forbidPattern(file: string, source: string, pattern: RegExp, message: string): void {
+  if (pattern.test(source)) {
+    violations.push({ file, line: 1, message });
+  }
+}
+
 const READONLY_RENDER_MESSAGE =
   'readonly LockedSection children must be an immediate render function that binds disabled';
 const READONLY_CONSUME_MESSAGE =
@@ -499,11 +505,11 @@ for (const key of [
 }
 
 const licenseNoticeSource = sourceFor(LICENSE_NOTICE);
-requirePattern(
+forbidPattern(
   LICENSE_NOTICE,
   licenseNoticeSource,
-  /if\s*\(compact\s*&&\s*resolution\s*===\s*['"]checking['"]\)[\s\S]*?return\s*\([\s\S]*?<Box[\s\S]*?<Typography/,
-  'compact checking context must be static text; the plugin-shell notice owns live recovery UI'
+  /['"]formflow\.license\.checking['"]/,
+  'the status notice must stay silent while checking; a background re-check the administrator did not start must not render'
 );
 requirePattern(
   LICENSE_NOTICE,
@@ -589,6 +595,73 @@ violations.push(
     /\bonClick\s*=/g,
     'locked GatedButton must not forward onClick'
   )
+);
+
+// A licence check the administrator never started must not narrate itself. The
+// ambient surfaces stay silent while `checking`; the phrasing survives only
+// where it answers a deliberate action — a hover tooltip, an accessible label,
+// or a toast after a refused click — and is worded as such.
+const AMBIENT_WHILE_CHECKING = [
+  LICENSE_NOTICE,
+  'admin/src/ee/components/FormBuilder/StepsManager.tsx',
+  'admin/src/ee/components/FormBuilder/ConditionalLogicBuilder.tsx',
+  'admin/src/components/FormSettings/index.tsx',
+  'admin/src/components/FormBuilder/FieldTypeSelector.tsx',
+] as const;
+
+for (const file of AMBIENT_WHILE_CHECKING) {
+  forbidPattern(
+    file,
+    sourceFor(file),
+    /license\.checking/,
+    'must stay silent while the licence check runs; it renders unprompted'
+  );
+}
+
+for (const file of [...AMBIENT_WHILE_CHECKING, ...PRIMITIVES, EN_TRANSLATIONS]) {
+  forbidPattern(
+    file,
+    sourceFor(file),
+    /Checking FormFlow license/,
+    'the ambient "Checking FormFlow license…" status phrasing must not reappear'
+  );
+}
+
+const LOCKED_SECTION = 'admin/src/ee/components/LockedSection.tsx';
+const STEPS_MANAGER = 'admin/src/ee/components/FormBuilder/StepsManager.tsx';
+const CONDITIONAL_BUILDER = 'admin/src/ee/components/FormBuilder/ConditionalLogicBuilder.tsx';
+
+// `replace` mode passes raw premium children, not the render-function contract
+// that binds `disabled`. Dimming them behind `aria-disabled` would leave them
+// operable, making an unresolved check the most permissive non-entitled state.
+requirePattern(
+  LOCKED_SECTION,
+  sourceFor(LOCKED_SECTION),
+  /if \(access === ['"]checking['"]\) \{\s*return null;\s*\}/,
+  'replace-mode checking must withhold children entirely, not dim them'
+);
+
+// A tier badge asserts the customer does not hold the tier. While access is
+// merely unresolved that is not known, and saying it to a paying customer next
+// to disabled controls reads as "you do not own this".
+// Asserted positively: gating through an alias such as `disabled` would slip
+// past a check that only forbids one spelling of the negative form.
+for (const file of [STEPS_MANAGER, CONDITIONAL_BUILDER]) {
+  requirePattern(
+    file,
+    sourceFor(file),
+    /access === ['"]unentitled['"] \?\s*<ProBadge/,
+    'a tier badge must be gated on a confirmed unentitled plan, never on unresolved access'
+  );
+}
+
+// Sidebar navigation remounts the notice, so a dismissal held in component
+// state would put the banner straight back on screen — and grace lasts days.
+requirePattern(
+  LICENSE_NOTICE,
+  licenseNoticeSource,
+  /let dismissedForSession: LicenseNoticeIdentity = null/,
+  'a dismissed notice must stay dismissed for the browser session, not just the mount'
 );
 
 assert.equal(

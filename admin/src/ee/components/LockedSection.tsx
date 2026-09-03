@@ -34,7 +34,8 @@ export type LockedSectionProps = LockedSectionBaseProps &
  * Gates a section of the admin UI from explicit feature access.
  *
  * - entitled: renders children untouched.
- * - checking/unavailable + replace: renders state-specific status UI.
+ * - checking + replace: renders nothing — silent, and children withheld.
+ * - unavailable + replace: renders the status notice.
  * - unentitled + replace (default): swaps in an <UpsellCard>.
  * - locked + readonly: renders dimmed children whose controls receive real
  *   disabled/readOnly state through the render-function contract.
@@ -57,7 +58,7 @@ export const LockedSection = ({
     access === 'checking'
       ? formatMessage({
           id: 'formflow.license.checking',
-          defaultMessage: 'Checking FormFlow license…',
+          defaultMessage: 'Unavailable while FormFlow verifies your license',
         })
       : access === 'unavailable'
         ? formatMessage({
@@ -85,15 +86,14 @@ export const LockedSection = ({
     );
   }
 
+  // `readonly` returned above with children whose controls take real disabled
+  // state. Here in `replace` mode the children are raw premium UI, so they must
+  // stay withheld: `aria-disabled` on a wrapper disables nothing, and rendering
+  // them would make `checking` the most permissive non-entitled state. Silent,
+  // and it must not fall through to the upsell, which would mis-sell an
+  // entitled customer mid-check.
   if (access === 'checking') {
-    return (
-      <Box padding={4} role="status">
-        {formatMessage({
-          id: 'formflow.license.checking',
-          defaultMessage: 'Checking FormFlow license…',
-        })}
-      </Box>
-    );
+    return null;
   }
 
   if (access === 'unavailable') {

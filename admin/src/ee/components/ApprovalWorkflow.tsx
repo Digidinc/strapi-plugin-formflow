@@ -3,6 +3,7 @@ import { useState, type ChangeEvent } from 'react';
 import {
   Box,
   Flex,
+  Loader,
   Typography,
   Badge,
   Field,
@@ -42,8 +43,8 @@ const STATUS_VARIANTS: Record<ApprovalStatus, 'secondary' | 'success' | 'danger'
 /**
  * Approval workflow panel (Business feature) for a single submission.
  *
- * Unresolved verification renders a neutral status notice, while a confirmed
- * unentitled plan renders the upgrade card. Fetch and mutation hooks live only
+ * Unresolved verification renders a neutral loader — never a licensing
+ * message — while a confirmed unentitled plan renders the upgrade card. Fetch and mutation hooks live only
  * in the entitled child so no premium request can originate from a locked
  * branch. The server remains the authoritative gate (402 on the endpoint).
  */
@@ -54,7 +55,14 @@ const ApprovalWorkflow = (props: ApprovalWorkflowProps) => {
 
   switch (approvalAccess) {
     case 'checking':
-      return <LicenseStatusNotice compact />;
+      return <Flex justifyContent="center" padding={6}>
+          <Loader small>
+            {formatMessage({
+              id: getTranslation('common.loading'),
+              defaultMessage: 'Loading...',
+            })}
+          </Loader>
+        </Flex>;
     case 'unavailable':
       return <LicenseStatusNotice compact />;
     case 'unentitled':

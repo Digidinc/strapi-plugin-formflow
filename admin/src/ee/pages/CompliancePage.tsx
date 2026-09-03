@@ -6,6 +6,7 @@ import {
   Dialog,
   Field,
   Flex,
+  Loader,
   Table,
   Tbody,
   Td,
@@ -88,7 +89,14 @@ const SubjectPanel = ({ access }: { access: FeatureAccess }) => {
     case 'checking':
       return (
         <CompliancePanel title={title}>
-          <LicenseStatusNotice compact />
+          <Flex justifyContent="center" padding={6}>
+          <Loader small>
+            {formatMessage({
+              id: getTranslation('common.loading'),
+              defaultMessage: 'Loading...',
+            })}
+          </Loader>
+        </Flex>
         </CompliancePanel>
       );
     case 'unavailable':
@@ -351,7 +359,14 @@ const AuditPanel = ({ access }: { access: FeatureAccess }) => {
     case 'checking':
       return (
         <CompliancePanel title={title}>
-          <LicenseStatusNotice compact />
+          <Flex justifyContent="center" padding={6}>
+          <Loader small>
+            {formatMessage({
+              id: getTranslation('common.loading'),
+              defaultMessage: 'Loading...',
+            })}
+          </Loader>
+        </Flex>
         </CompliancePanel>
       );
     case 'unavailable':

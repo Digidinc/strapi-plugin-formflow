@@ -10,7 +10,16 @@ import {
   type LicenseNoticeIdentity,
 } from '../license-state';
 
-const CHECKING_NOTICE_DELAY_MS = 300;
+/**
+ * Notice the administrator has dismissed, for the rest of the browser session.
+ *
+ * Each menu link is a sibling route mount, so this component is unmounted and
+ * remounted whenever they move between FormFlow pages. Component state would
+ * put a dismissed banner straight back on screen on the next click — and a
+ * grace window lasts days. Keyed by identity, so a changed deadline or a new
+ * condition still raises it again.
+ */
+let dismissedForSession: LicenseNoticeIdentity = null;
 
 export interface LicenseStatusNoticeProps {
   compact?: boolean;
@@ -19,50 +28,32 @@ export interface LicenseStatusNoticeProps {
 export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProps) => {
   const { formatDate, formatMessage } = useIntl();
   const { resolution, state: licenseState, graceUntil, isRefreshing, refresh } = useLicense();
-  const [showChecking, setShowChecking] = useState(false);
-  const [dismissedNotice, setDismissedNotice] = useState<LicenseNoticeIdentity>(null);
+  const [dismissedNotice, setDismissedNotice] = useState<LicenseNoticeIdentity>(dismissedForSession);
   const currentState = licenseState();
   const deadline = graceUntil();
   const noticeIdentity = licenseNoticeIdentity(resolution, currentState, deadline);
 
   useEffect(() => {
-    if (resolution !== 'checking') {
-      setShowChecking(false);
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => setShowChecking(true), CHECKING_NOTICE_DELAY_MS);
-    return () => window.clearTimeout(timeoutId);
-  }, [resolution]);
-
-  useEffect(() => {
-    setDismissedNotice((current) => reconcileDismissedNotice(current, noticeIdentity));
+    const next = reconcileDismissedNotice(dismissedForSession, noticeIdentity);
+    dismissedForSession = next;
+    setDismissedNotice(next);
   }, [noticeIdentity]);
 
   const closeLabel = formatMessage({
     id: 'formflow.common.close',
     defaultMessage: 'Close',
   });
-  const handleClose = () => setDismissedNotice(noticeIdentity);
+  const handleClose = () => {
+    dismissedForSession = noticeIdentity;
+    setDismissedNotice(noticeIdentity);
+  };
 
   if (noticeIdentity === null || dismissedNotice === noticeIdentity) return null;
 
   // The plugin shell owns the single live alert and Retry action. Compact
   // instances only provide adjacent, readable context for a locked section.
-  if (compact && resolution === 'checking') {
-    if (!showChecking) return null;
-    return (
-      <Box>
-        <Typography variant="pi" textColor="neutral600">
-          {formatMessage({
-            id: 'formflow.license.checking',
-            defaultMessage: 'Checking FormFlow license…',
-          })}
-        </Typography>
-      </Box>
-    );
-  }
-
+  // Neither surfaces `checking`: it is silent, so `licenseNoticeIdentity`
+  // already returned null above and nothing below is reached while it runs.
   if (compact && resolution === 'unavailable') {
     return (
       <Box>
@@ -74,25 +65,6 @@ export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProp
           })}
         </Typography>
       </Box>
-    );
-  }
-
-  if (resolution === 'checking') {
-    if (!showChecking) return null;
-
-    return (
-      <Alert
-        closeLabel={closeLabel}
-        onClose={handleClose}
-        padding={compact ? 3 : 4}
-        marginBottom={compact ? 0 : 4}
-        variant="default"
-      >
-        {formatMessage({
-          id: 'formflow.license.checking',
-          defaultMessage: 'Checking FormFlow license…',
-        })}
-      </Alert>
     );
   }
 

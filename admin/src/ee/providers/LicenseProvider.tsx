@@ -17,6 +17,25 @@ import {
 
 const VERIFICATION_TIMEOUT_MS = 10_000;
 
+/**
+ * Last snapshot the server settled on during this browser session.
+ *
+ * Each menu link is a sibling route mount, so moving between FormFlow pages
+ * unmounts and remounts this provider. Seeding from here keeps already-resolved
+ * access stable instead of regressing to `checking` on every navigation, which
+ * would flash the status notice and briefly disable premium controls.
+ *
+ * This is the cross-mount form of the guarantee `refreshStartResolution` already
+ * makes within a single mount. It is memory-only — never persisted, and dropped
+ * on reload.
+ *
+ * Its optimism is bounded by the mount's own request: a seeded mount whose first
+ * fetch fails falls back to `unavailable` rather than presenting entitlement it
+ * never confirmed. The server gates every premium action independently in any
+ * case, so the seed is a display decision, not an authorisation one.
+ */
+let lastSettledSnapshot: LicenseSnapshot | null = null;
+
 function normalizeError(cause: unknown): Error {
   return cause instanceof Error ? cause : new Error(String(cause));
 }
@@ -32,13 +51,17 @@ function verificationTimeout(): Error {
  */
 const LicenseProvider = ({ children }: { children: React.ReactNode }) => {
   const { get, post } = useFetchClient();
-  const [snapshot, setSnapshot] = useState<LicenseSnapshot | null>(null);
-  const [resolution, setResolution] = useState<LicenseResolution>('checking');
-  const [isLoading, setIsLoading] = useState(true);
+  const [snapshot, setSnapshot] = useState<LicenseSnapshot | null>(lastSettledSnapshot);
+  const [resolution, setResolution] = useState<LicenseResolution>(
+    lastSettledSnapshot?.resolution ?? 'checking'
+  );
+  const [isLoading, setIsLoading] = useState(lastSettledSnapshot === null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(false);
   const hasLoadedRef = useRef(false);
+  /** Whether a request in *this* mount has come back, as opposed to the seed. */
+  const confirmedRef = useRef(false);
   const requestRef = useRef<Promise<void> | null>(null);
 
   const runRequest = useCallback(
@@ -100,6 +123,8 @@ const LicenseProvider = ({ children }: { children: React.ReactNode }) => {
           : firstSnapshot;
       })()
         .then((next) => {
+          lastSettledSnapshot = next;
+          confirmedRef.current = true;
           if (!mountedRef.current) return;
           setSnapshot(next);
           setResolution(next.resolution);
@@ -108,7 +133,13 @@ const LicenseProvider = ({ children }: { children: React.ReactNode }) => {
         .catch((cause: unknown) => {
           if (!mountedRef.current) return;
           setError(normalizeError(cause));
-          setResolution((current) => refreshFailureResolution(current));
+          // Retaining last-known access applies to a *replacement* that failed.
+          // A seeded mount that has confirmed nothing of its own has no such
+          // access to retain, so it degrades and raises the warning instead of
+          // silently presenting a stale entitlement.
+          setResolution((current) =>
+            confirmedRef.current ? refreshFailureResolution(current) : 'unavailable'
+          );
         })
         .finally(() => {
           requestRef.current = null;

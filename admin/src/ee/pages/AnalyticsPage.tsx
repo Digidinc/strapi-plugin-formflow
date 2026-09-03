@@ -49,7 +49,14 @@ export const AnalyticsPage = ({ formDocumentId }: AnalyticsPageProps) => {
 
   switch (analyticsAccess) {
     case 'checking':
-      content = <LicenseStatusNotice compact />;
+      content = <Flex justifyContent="center" padding={6}>
+          <Loader small>
+            {formatMessage({
+              id: getTranslation('common.loading'),
+              defaultMessage: 'Loading...',
+            })}
+          </Loader>
+        </Flex>;
       break;
     case 'unavailable':
       content = <LicenseStatusNotice compact />;

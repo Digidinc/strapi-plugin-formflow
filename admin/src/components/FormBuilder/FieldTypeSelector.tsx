@@ -300,16 +300,17 @@ export const FieldTypeSelector = ({
                         {types.map((fieldType) => {
                           const fieldAccess = accessForFieldType(fieldType);
                           const label = typeLabel(fieldType);
+                          // A check in flight is left unlabelled: the tile is
+                          // already disabled and the check settles on its own.
                           const unavailableLabel =
                             fieldAccess === 'checking'
-                              ? formatMessage({
-                                  id: getTranslation('license.checking'),
-                                  defaultMessage: 'Checking FormFlow license…',
-                                })
+                              ? null
                               : formatMessage({
                                   id: getTranslation('fieldType.selector.unavailable'),
                                   defaultMessage: 'License verification is unavailable.',
                                 });
+                          const tileLabel =
+                            unavailableLabel === null ? label : `${label}: ${unavailableLabel}`;
 
                           return (
                             <Grid.Item
@@ -330,8 +331,8 @@ export const FieldTypeSelector = ({
                                 <UnavailableFieldTypeTile
                                   type="button"
                                   disabled
-                                  title={`${label}: ${unavailableLabel}`}
-                                  aria-label={`${label}: ${unavailableLabel}`}
+                                  title={tileLabel}
+                                  aria-label={tileLabel}
                                 >
                                   <Flex direction="column" alignItems="center" gap={2}>
                                     <Flex>{getFieldIcon(fieldType.type)}</Flex>
@@ -343,13 +344,15 @@ export const FieldTypeSelector = ({
                                     >
                                       {label}
                                     </Typography>
-                                    <Typography
-                                      variant="pi"
-                                      textAlign="center"
-                                      textColor="neutral600"
-                                    >
-                                      {unavailableLabel}
-                                    </Typography>
+                                    {unavailableLabel !== null && (
+                                      <Typography
+                                        variant="pi"
+                                        textAlign="center"
+                                        textColor="neutral600"
+                                      >
+                                        {unavailableLabel}
+                                      </Typography>
+                                    )}
                                   </Flex>
                                 </UnavailableFieldTypeTile>
                               ) : (

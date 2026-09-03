@@ -25,7 +25,8 @@ export interface StepsManagerProps {
  * Multi-step (wizard) steps manager. Owns add/rename/remove of `settings.steps`;
  * the per-field step-assignment dropdown lives in FormBuilder. Existing steps
  * stay visible while access is unresolved or locked, but all mutations receive
- * real disabled state and the header explains why.
+ * real disabled state. A confirmed lock explains itself in the header; an
+ * unresolved check says nothing, since it settles on its own.
  */
 export const StepsManager = ({ steps, settings, onSettingsChange, access }: StepsManagerProps) => {
   const { formatMessage } = useIntl();
@@ -67,7 +68,7 @@ export const StepsManager = ({ steps, settings, onSettingsChange, access }: Step
               defaultMessage: 'Steps',
             })}
           </Typography>
-          {disabled ? <ProBadge feature="multistep" /> : null}
+          {access === 'unentitled' ? <ProBadge feature="multistep" /> : null}
         </Flex>
         <GatedButton
           access={access}
@@ -84,16 +85,9 @@ export const StepsManager = ({ steps, settings, onSettingsChange, access }: Step
         </GatedButton>
       </Flex>
 
-      {access === 'checking' ? (
-        <Box marginBottom={4} role="status">
-          <Typography variant="pi" textColor="neutral600">
-            {formatMessage({
-              id: getTranslation('license.checking'),
-              defaultMessage: 'Checking FormFlow license…',
-            })}
-          </Typography>
-        </Box>
-      ) : access === 'unavailable' ? (
+      {/* `checking` stays silent — the controls above are already disabled and
+          the check settles on its own, so narrating it only adds noise. */}
+      {access === 'unavailable' ? (
         <Box marginBottom={4}>
           <LicenseStatusNotice compact />
         </Box>

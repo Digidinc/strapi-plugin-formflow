@@ -184,13 +184,11 @@ export const FormBuilder = ({ fields, onChange, settings, onSettingsChange }: Fo
       'FormFlow could not verify the current license. Premium controls are temporarily unavailable. Free features remain available.',
   });
   const licenseCheckingMessage = formatMessage({
-    id: getTranslation('license.checking'),
-    defaultMessage: 'Checking FormFlow license…',
+    id: getTranslation('license.checking.retry'),
+    defaultMessage: 'FormFlow is still verifying your license. Try again in a moment.',
   });
   const multistepAssignmentHint =
-    multistepAccess === 'checking'
-      ? licenseCheckingMessage
-      : multistepAccess === 'unavailable'
+    multistepAccess === 'unavailable'
         ? licenseVerificationUnavailableMessage
         : multistepAccess === 'unentitled'
           ? formatMessage({
