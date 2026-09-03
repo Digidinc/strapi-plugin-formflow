@@ -65,6 +65,12 @@ function requirePattern(file: string, source: string, pattern: RegExp, message: 
   }
 }
 
+function forbidPattern(file: string, source: string, pattern: RegExp, message: string): void {
+  if (pattern.test(source)) {
+    violations.push({ file, line: 1, message });
+  }
+}
+
 const READONLY_RENDER_MESSAGE =
   'readonly LockedSection children must be an immediate render function that binds disabled';
 const READONLY_CONSUME_MESSAGE =
@@ -499,11 +505,11 @@ for (const key of [
 }
 
 const licenseNoticeSource = sourceFor(LICENSE_NOTICE);
-requirePattern(
+forbidPattern(
   LICENSE_NOTICE,
   licenseNoticeSource,
-  /if\s*\(compact\s*&&\s*resolution\s*===\s*['"]checking['"]\)[\s\S]*?return\s*\([\s\S]*?<Box[\s\S]*?<Typography/,
-  'compact checking context must be static text; the plugin-shell notice owns live recovery UI'
+  /['"]formflow\.license\.checking['"]/,
+  'the status notice must stay silent while checking; a background re-check the administrator did not start must not render'
 );
 requirePattern(
   LICENSE_NOTICE,
@@ -590,6 +596,36 @@ violations.push(
     'locked GatedButton must not forward onClick'
   )
 );
+
+// A licence check the administrator never started must not narrate itself. The
+// ambient surfaces stay silent while `checking`; the phrasing survives only
+// where it answers a deliberate action — a hover tooltip, an accessible label,
+// or a toast after a refused click — and is worded as such.
+const AMBIENT_WHILE_CHECKING = [
+  LICENSE_NOTICE,
+  'admin/src/ee/components/FormBuilder/StepsManager.tsx',
+  'admin/src/ee/components/FormBuilder/ConditionalLogicBuilder.tsx',
+  'admin/src/components/FormSettings/index.tsx',
+  'admin/src/components/FormBuilder/FieldTypeSelector.tsx',
+] as const;
+
+for (const file of AMBIENT_WHILE_CHECKING) {
+  forbidPattern(
+    file,
+    sourceFor(file),
+    /license\.checking/,
+    'must stay silent while the licence check runs; it renders unprompted'
+  );
+}
+
+for (const file of [...AMBIENT_WHILE_CHECKING, ...PRIMITIVES, EN_TRANSLATIONS]) {
+  forbidPattern(
+    file,
+    sourceFor(file),
+    /Checking FormFlow license/,
+    'the ambient "Checking FormFlow license…" status phrasing must not reappear'
+  );
+}
 
 assert.equal(
   violations.length,

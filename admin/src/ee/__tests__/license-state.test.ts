@@ -75,17 +75,20 @@ assert.equal(resolveFeatureAccess('entitled', undefined, false), 'unentitled');
 assert.equal(resolveFeatureAccess('unentitled', undefined, true), 'entitled');
 assert.equal(resolveFeatureAccess('checking', 'entitled', false), 'entitled');
 
-const checkingNotice = licenseNoticeIdentity('checking', 'free', null);
 const unavailableNotice = licenseNoticeIdentity('unavailable', 'free', null);
 const firstGraceNotice = licenseNoticeIdentity('resolved', 'grace', '2026-07-13T12:00:00Z');
 const nextGraceNotice = licenseNoticeIdentity('resolved', 'grace', '2026-07-14T12:00:00Z');
 
-assert.equal(checkingNotice, 'checking');
+// A background re-check is silent: it blocks nothing and settles on its own, so
+// it must not raise a notice on any page it happens to run on.
+assert.equal(licenseNoticeIdentity('checking', 'free', null), null);
+assert.equal(licenseNoticeIdentity('checking', 'active', null), null);
+assert.equal(licenseNoticeIdentity('checking', 'grace', '2026-07-13T12:00:00Z'), null);
+// Degraded and time-limited access still have to be told.
 assert.equal(unavailableNotice, 'unavailable');
 assert.notEqual(firstGraceNotice, nextGraceNotice);
 assert.equal(licenseNoticeIdentity('resolved', 'active', null), null);
-assert.equal(reconcileDismissedNotice(checkingNotice, checkingNotice), checkingNotice);
-assert.equal(reconcileDismissedNotice(checkingNotice, unavailableNotice), null);
+assert.equal(reconcileDismissedNotice(unavailableNotice, unavailableNotice), unavailableNotice);
 assert.equal(reconcileDismissedNotice(firstGraceNotice, nextGraceNotice), null);
 assert.equal(reconcileDismissedNotice(unavailableNotice, null), null);
 
@@ -191,6 +194,36 @@ assert.match(
   providerSource,
   /runRequest\(['"]remote['"]\)/,
   'context refresh must use the authenticated remote-refresh endpoint'
+);
+
+// Each menu link is a sibling route mount, so navigating between FormFlow pages
+// remounts the provider. Without a session-scoped seed the remount would drop
+// back to `checking` every time, flashing the notice and disabling premium
+// controls on each navigation.
+assert.match(
+  providerSource,
+  /let\s+lastSettledSnapshot:\s*LicenseSnapshot\s*\|\s*null\s*=\s*null/,
+  'the provider must keep the last settled snapshot for the browser session'
+);
+assert.match(
+  providerSource,
+  /useState<LicenseSnapshot \| null>\(lastSettledSnapshot\)/,
+  'a remount must seed from the last settled snapshot rather than refetching blind'
+);
+assert.match(
+  providerSource,
+  /useState<LicenseResolution>\(\s*lastSettledSnapshot\?\.resolution \?\? ['"]checking['"]\s*\)/,
+  'a remount must not regress resolved access to checking'
+);
+assert.match(
+  providerSource,
+  /\.then\(\(next\) => \{\s*lastSettledSnapshot = next;/,
+  'only a snapshot the server settled on may seed a later mount'
+);
+assert.doesNotMatch(
+  providerSource,
+  /localStorage|sessionStorage/,
+  'the seed is memory-only — entitlement must never be restored from browser storage'
 );
 
 console.log('All assertions passed: admin license access state and retry delays.');
