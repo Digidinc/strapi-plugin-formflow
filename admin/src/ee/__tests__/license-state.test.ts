@@ -136,8 +136,8 @@ assert.equal(
 assert.equal(refreshStartResolution?.('checking'), 'checking');
 assert.equal(
   refreshStartResolution?.('unavailable'),
-  'checking',
-  'retrying an unavailable state must expose active verification'
+  'unavailable',
+  'a retry must keep the warning and its Retry button on screen; a check renders nothing, so flipping to checking would unmount the control that was just pressed'
 );
 
 const refreshFailureResolution = (
@@ -172,7 +172,7 @@ assert.match(
 );
 assert.match(
   providerSource,
-  /setResolution\(\s*\(current\)\s*=>\s*refreshFailureResolution\(current\)\s*\)/,
+  /setResolution\(\s*\(current\)\s*=>\s*[\s\S]{0,120}refreshFailureResolution\(current\)/,
   'refresh failure must preserve a previously resolved access state'
 );
 assert.match(
@@ -224,6 +224,20 @@ assert.doesNotMatch(
   providerSource,
   /localStorage|sessionStorage/,
   'the seed is memory-only — entitlement must never be restored from browser storage'
+);
+
+// The seed is optimistic only for as long as the mount's own request is
+// outstanding. If that request fails, the mount has confirmed nothing of its
+// own and must degrade rather than present a stale entitlement in silence.
+assert.match(
+  providerSource,
+  /confirmedRef\.current = true;/,
+  'a settled response must mark this mount as having confirmed access itself'
+);
+assert.match(
+  providerSource,
+  /confirmedRef\.current \? refreshFailureResolution\(current\) : ['"]unavailable['"]/,
+  'a seeded mount whose own fetch fails must fall back to unavailable'
 );
 
 console.log('All assertions passed: admin license access state and retry delays.');

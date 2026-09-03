@@ -627,6 +627,43 @@ for (const file of [...AMBIENT_WHILE_CHECKING, ...PRIMITIVES, EN_TRANSLATIONS]) 
   );
 }
 
+const LOCKED_SECTION = 'admin/src/ee/components/LockedSection.tsx';
+const STEPS_MANAGER = 'admin/src/ee/components/FormBuilder/StepsManager.tsx';
+const CONDITIONAL_BUILDER = 'admin/src/ee/components/FormBuilder/ConditionalLogicBuilder.tsx';
+
+// `replace` mode passes raw premium children, not the render-function contract
+// that binds `disabled`. Dimming them behind `aria-disabled` would leave them
+// operable, making an unresolved check the most permissive non-entitled state.
+requirePattern(
+  LOCKED_SECTION,
+  sourceFor(LOCKED_SECTION),
+  /if \(access === ['"]checking['"]\) \{\s*return null;\s*\}/,
+  'replace-mode checking must withhold children entirely, not dim them'
+);
+
+// A tier badge asserts the customer does not hold the tier. While access is
+// merely unresolved that is not known, and saying it to a paying customer next
+// to disabled controls reads as "you do not own this".
+// Asserted positively: gating through an alias such as `disabled` would slip
+// past a check that only forbids one spelling of the negative form.
+for (const file of [STEPS_MANAGER, CONDITIONAL_BUILDER]) {
+  requirePattern(
+    file,
+    sourceFor(file),
+    /access === ['"]unentitled['"] \?\s*<ProBadge/,
+    'a tier badge must be gated on a confirmed unentitled plan, never on unresolved access'
+  );
+}
+
+// Sidebar navigation remounts the notice, so a dismissal held in component
+// state would put the banner straight back on screen — and grace lasts days.
+requirePattern(
+  LICENSE_NOTICE,
+  licenseNoticeSource,
+  /let dismissedForSession: LicenseNoticeIdentity = null/,
+  'a dismissed notice must stay dismissed for the browser session, not just the mount'
+);
+
 assert.equal(
   violations.length,
   0,
