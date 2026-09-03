@@ -57,7 +57,7 @@ export const LockedSection = ({
     access === 'checking'
       ? formatMessage({
           id: 'formflow.license.checking',
-          defaultMessage: 'Checking FormFlow license…',
+          defaultMessage: 'FormFlow is still verifying your license. Try again in a moment.',
         })
       : access === 'unavailable'
         ? formatMessage({
@@ -85,13 +85,12 @@ export const LockedSection = ({
     );
   }
 
+  // An unresolved check presents like `readonly`: disabled, and silent. It must
+  // not fall through to the upsell, which would mis-sell an entitled customer.
   if (access === 'checking') {
     return (
-      <Box padding={4} role="status">
-        {formatMessage({
-          id: 'formflow.license.checking',
-          defaultMessage: 'Checking FormFlow license…',
-        })}
+      <Box style={{ opacity: 0.6 }} role="group" aria-label={lockedReason} aria-disabled>
+        {renderedChildren}
       </Box>
     );
   }

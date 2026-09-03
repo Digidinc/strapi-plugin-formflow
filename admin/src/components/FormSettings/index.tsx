@@ -112,10 +112,6 @@ export const FormSettings = ({
   const whiteLabelPolicy = premiumMutationPolicy(whiteLabelAccess);
   const approvalPolicy = premiumMutationPolicy(approvalAccess);
   const currentLayout = settings.layout || 'single';
-  const checkingMessage = formatMessage({
-    id: getTranslation('license.checking'),
-    defaultMessage: 'Checking FormFlow license…',
-  });
   const unavailableMessage = formatMessage({
     id: getTranslation('license.unavailable'),
     defaultMessage:
@@ -239,9 +235,7 @@ export const FormSettings = ({
             <Field.Root
               name="requiresApproval"
               hint={
-                approvalAccess === 'checking'
-                  ? checkingMessage
-                  : approvalAccess === 'unavailable'
+                approvalAccess === 'unavailable'
                     ? unavailableMessage
                     : formatMessage({
                         id: getTranslation('settings.requiresApproval.hint'),
@@ -349,9 +343,7 @@ export const FormSettings = ({
             <Field.Root
               name="layout"
               hint={
-                multistepAccess === 'checking'
-                  ? checkingMessage
-                  : multistepAccess === 'unavailable'
+                multistepAccess === 'unavailable'
                     ? unavailableMessage
                     : multistepAccess === 'unentitled'
                       ? formatMessage(
@@ -444,10 +436,10 @@ export const FormSettings = ({
                 })}
                 badge={whiteLabelAccess === 'unentitled' ? <ProBadge tier="pro" /> : undefined}
               >
-                {(whiteLabelAccess === 'checking' || whiteLabelAccess === 'unavailable') && (
+                {whiteLabelAccess === 'unavailable' && (
                   <Box marginBottom={3} role="status">
                     <Typography variant="pi" textColor="neutral600">
-                      {whiteLabelAccess === 'checking' ? checkingMessage : unavailableMessage}
+                      {unavailableMessage}
                     </Typography>
                   </Box>
                 )}

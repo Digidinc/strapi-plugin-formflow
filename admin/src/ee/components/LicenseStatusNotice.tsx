@@ -10,8 +10,6 @@ import {
   type LicenseNoticeIdentity,
 } from '../license-state';
 
-const CHECKING_NOTICE_DELAY_MS = 300;
-
 export interface LicenseStatusNoticeProps {
   compact?: boolean;
 }
@@ -19,21 +17,10 @@ export interface LicenseStatusNoticeProps {
 export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProps) => {
   const { formatDate, formatMessage } = useIntl();
   const { resolution, state: licenseState, graceUntil, isRefreshing, refresh } = useLicense();
-  const [showChecking, setShowChecking] = useState(false);
   const [dismissedNotice, setDismissedNotice] = useState<LicenseNoticeIdentity>(null);
   const currentState = licenseState();
   const deadline = graceUntil();
   const noticeIdentity = licenseNoticeIdentity(resolution, currentState, deadline);
-
-  useEffect(() => {
-    if (resolution !== 'checking') {
-      setShowChecking(false);
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => setShowChecking(true), CHECKING_NOTICE_DELAY_MS);
-    return () => window.clearTimeout(timeoutId);
-  }, [resolution]);
 
   useEffect(() => {
     setDismissedNotice((current) => reconcileDismissedNotice(current, noticeIdentity));
@@ -49,20 +36,8 @@ export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProp
 
   // The plugin shell owns the single live alert and Retry action. Compact
   // instances only provide adjacent, readable context for a locked section.
-  if (compact && resolution === 'checking') {
-    if (!showChecking) return null;
-    return (
-      <Box>
-        <Typography variant="pi" textColor="neutral600">
-          {formatMessage({
-            id: 'formflow.license.checking',
-            defaultMessage: 'Checking FormFlow license…',
-          })}
-        </Typography>
-      </Box>
-    );
-  }
-
+  // Neither surfaces `checking`: it is silent, so `licenseNoticeIdentity`
+  // already returned null above and nothing below is reached while it runs.
   if (compact && resolution === 'unavailable') {
     return (
       <Box>
@@ -74,25 +49,6 @@ export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProp
           })}
         </Typography>
       </Box>
-    );
-  }
-
-  if (resolution === 'checking') {
-    if (!showChecking) return null;
-
-    return (
-      <Alert
-        closeLabel={closeLabel}
-        onClose={handleClose}
-        padding={compact ? 3 : 4}
-        marginBottom={compact ? 0 : 4}
-        variant="default"
-      >
-        {formatMessage({
-          id: 'formflow.license.checking',
-          defaultMessage: 'Checking FormFlow license…',
-        })}
-      </Alert>
     );
   }
 

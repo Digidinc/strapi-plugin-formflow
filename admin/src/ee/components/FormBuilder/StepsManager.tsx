@@ -84,16 +84,9 @@ export const StepsManager = ({ steps, settings, onSettingsChange, access }: Step
         </GatedButton>
       </Flex>
 
-      {access === 'checking' ? (
-        <Box marginBottom={4} role="status">
-          <Typography variant="pi" textColor="neutral600">
-            {formatMessage({
-              id: getTranslation('license.checking'),
-              defaultMessage: 'Checking FormFlow license…',
-            })}
-          </Typography>
-        </Box>
-      ) : access === 'unavailable' ? (
+      {/* `checking` stays silent — the controls above are already disabled and
+          the check settles on its own, so narrating it only adds noise. */}
+      {access === 'unavailable' ? (
         <Box marginBottom={4}>
           <LicenseStatusNotice compact />
         </Box>
