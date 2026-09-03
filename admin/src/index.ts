@@ -20,11 +20,11 @@ export default {
       // Only show the menu entry to roles granted at least form-read. The page
       // itself is also wrapped in <Page.Protect> for defense in depth.
       permissions: PERMISSIONS.main,
-      Component: async () => {
-        const { App } = await import('./pages/App');
-
-        return App;
-      },
+      // Keep this a `.then()` chain resolving to `{ default }`. With
+      // `await` + destructuring on the dynamic import, Rollup rewrites the
+      // call site in the host admin's production build into a shim that drops
+      // the chunk namespace, and the page crashes on load. See issue #57.
+      Component: () => import('./pages/App').then(({ App }) => ({ default: App })),
     });
 
     app.addMenuLink({

@@ -66,3 +66,28 @@ test('dedicated settings and compliance route mounts preserve labels, permission
     /const ComplianceApp[\s\S]*<AppProviders>[\s\S]*permissions=\{PERMISSIONS\.main\}[\s\S]*<CompliancePage/
   );
 });
+
+test('menu link Component loaders resolve to a `{ default }` module without awaiting the import', () => {
+  for (const { label, block } of menuLinks) {
+    const loaderStart = block.indexOf('Component:');
+
+    assert.notEqual(loaderStart, -1, `The ${label} sidebar link must register a Component loader.`);
+
+    const loader = block.slice(loaderStart);
+
+    // Rollup's dynamic-import namespace optimization rewrites an awaited,
+    // destructured `import()` in the host admin's production build into a shim
+    // that drops the plugin chunk's namespace, so the loader resolves to
+    // `undefined` and the page crashes. See issue #57.
+    assert.doesNotMatch(
+      loader,
+      /await\s+import\(/,
+      `The ${label} sidebar link must not await its dynamic import.`
+    );
+    assert.match(
+      loader,
+      /Component: \(\) =>\s*import\('\.\/pages\/App'\)\.then\(\(\{ (\w+) \}\) => \(\{ default: \1 \}\)\)/,
+      `The ${label} sidebar link must load its page as \`import(...).then(({ X }) => ({ default: X }))\`.`
+    );
+  }
+});
