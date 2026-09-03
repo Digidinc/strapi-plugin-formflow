@@ -27,8 +27,12 @@ const VERIFICATION_TIMEOUT_MS = 10_000;
  *
  * This is the cross-mount form of the guarantee `refreshStartResolution` already
  * makes within a single mount. It is memory-only — never persisted, and dropped
- * on reload — and it cannot over-grant: the provider still re-fetches on every
- * mount, and the server independently gates every premium action.
+ * on reload.
+ *
+ * Its optimism is bounded by the mount's own request: a seeded mount whose first
+ * fetch fails falls back to `unavailable` rather than presenting entitlement it
+ * never confirmed. The server gates every premium action independently in any
+ * case, so the seed is a display decision, not an authorisation one.
  */
 let lastSettledSnapshot: LicenseSnapshot | null = null;
 
@@ -56,6 +60,8 @@ const LicenseProvider = ({ children }: { children: React.ReactNode }) => {
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(false);
   const hasLoadedRef = useRef(false);
+  /** Whether a request in *this* mount has come back, as opposed to the seed. */
+  const confirmedRef = useRef(false);
   const requestRef = useRef<Promise<void> | null>(null);
 
   const runRequest = useCallback(
@@ -118,6 +124,7 @@ const LicenseProvider = ({ children }: { children: React.ReactNode }) => {
       })()
         .then((next) => {
           lastSettledSnapshot = next;
+          confirmedRef.current = true;
           if (!mountedRef.current) return;
           setSnapshot(next);
           setResolution(next.resolution);
@@ -126,7 +133,13 @@ const LicenseProvider = ({ children }: { children: React.ReactNode }) => {
         .catch((cause: unknown) => {
           if (!mountedRef.current) return;
           setError(normalizeError(cause));
-          setResolution((current) => refreshFailureResolution(current));
+          // Retaining last-known access applies to a *replacement* that failed.
+          // A seeded mount that has confirmed nothing of its own has no such
+          // access to retain, so it degrades and raises the warning instead of
+          // silently presenting a stale entitlement.
+          setResolution((current) =>
+            confirmedRef.current ? refreshFailureResolution(current) : 'unavailable'
+          );
         })
         .finally(() => {
           requestRef.current = null;

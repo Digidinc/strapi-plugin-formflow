@@ -135,9 +135,16 @@ export function premiumMutationPolicy(access: FeatureAccess): PremiumMutationPol
   };
 }
 
-/** Keep confirmed access stable while a replacement snapshot is being fetched. */
+/**
+ * Keep any settled access stable while a replacement snapshot is being fetched.
+ *
+ * `unavailable` is preserved as well as `resolved`: a check in flight renders
+ * nothing, so flipping to `checking` would unmount the warning together with the
+ * Retry button the administrator just pressed, leaving the click with no visible
+ * effect. `isRefreshing` carries the in-flight signal instead.
+ */
 export function refreshStartResolution(current: LicenseResolution): LicenseResolution {
-  return current === 'resolved' ? 'resolved' : 'checking';
+  return current === 'checking' ? 'checking' : current;
 }
 
 /** Retain last-known confirmed access when only its replacement request fails. */
