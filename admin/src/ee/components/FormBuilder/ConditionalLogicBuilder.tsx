@@ -341,7 +341,7 @@ export const ConditionalLogicBuilder = ({
             defaultMessage: 'Show this field based on another field’s submitted value.',
           })}
           titleAdornment={
-            access !== 'entitled' ? <ProBadge feature="conditionalLogic" /> : undefined
+            access === 'unentitled' ? <ProBadge feature="conditionalLogic" /> : undefined
           }
         />
       </Box>

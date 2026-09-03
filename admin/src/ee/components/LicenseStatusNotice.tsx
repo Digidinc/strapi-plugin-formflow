@@ -10,6 +10,17 @@ import {
   type LicenseNoticeIdentity,
 } from '../license-state';
 
+/**
+ * Notice the administrator has dismissed, for the rest of the browser session.
+ *
+ * Each menu link is a sibling route mount, so this component is unmounted and
+ * remounted whenever they move between FormFlow pages. Component state would
+ * put a dismissed banner straight back on screen on the next click — and a
+ * grace window lasts days. Keyed by identity, so a changed deadline or a new
+ * condition still raises it again.
+ */
+let dismissedForSession: LicenseNoticeIdentity = null;
+
 export interface LicenseStatusNoticeProps {
   compact?: boolean;
 }
@@ -17,20 +28,25 @@ export interface LicenseStatusNoticeProps {
 export const LicenseStatusNotice = ({ compact = false }: LicenseStatusNoticeProps) => {
   const { formatDate, formatMessage } = useIntl();
   const { resolution, state: licenseState, graceUntil, isRefreshing, refresh } = useLicense();
-  const [dismissedNotice, setDismissedNotice] = useState<LicenseNoticeIdentity>(null);
+  const [dismissedNotice, setDismissedNotice] = useState<LicenseNoticeIdentity>(dismissedForSession);
   const currentState = licenseState();
   const deadline = graceUntil();
   const noticeIdentity = licenseNoticeIdentity(resolution, currentState, deadline);
 
   useEffect(() => {
-    setDismissedNotice((current) => reconcileDismissedNotice(current, noticeIdentity));
+    const next = reconcileDismissedNotice(dismissedForSession, noticeIdentity);
+    dismissedForSession = next;
+    setDismissedNotice(next);
   }, [noticeIdentity]);
 
   const closeLabel = formatMessage({
     id: 'formflow.common.close',
     defaultMessage: 'Close',
   });
-  const handleClose = () => setDismissedNotice(noticeIdentity);
+  const handleClose = () => {
+    dismissedForSession = noticeIdentity;
+    setDismissedNotice(noticeIdentity);
+  };
 
   if (noticeIdentity === null || dismissedNotice === noticeIdentity) return null;
 

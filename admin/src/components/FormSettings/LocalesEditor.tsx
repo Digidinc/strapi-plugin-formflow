@@ -59,7 +59,8 @@ const isLocalizableField = (field: FormField): boolean => field.type !== 'divide
  * server's `getPublicSchema` consumes when serving `?locale=<code>`.
  *
  * Gating: editing follows explicit `multiLanguage` access. Resolved unentitled
- * access shows the upsell; checking/unavailable access shows neutral status.
+ * access shows the upsell; unavailable access shows the status notice; an
+ * unresolved check shows nothing at all.
  * Existing locale data remains readable and is never stripped (the server
  * save-gate is the authoritative enforcement point).
  */

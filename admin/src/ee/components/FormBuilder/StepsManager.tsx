@@ -25,7 +25,8 @@ export interface StepsManagerProps {
  * Multi-step (wizard) steps manager. Owns add/rename/remove of `settings.steps`;
  * the per-field step-assignment dropdown lives in FormBuilder. Existing steps
  * stay visible while access is unresolved or locked, but all mutations receive
- * real disabled state and the header explains why.
+ * real disabled state. A confirmed lock explains itself in the header; an
+ * unresolved check says nothing, since it settles on its own.
  */
 export const StepsManager = ({ steps, settings, onSettingsChange, access }: StepsManagerProps) => {
   const { formatMessage } = useIntl();
@@ -67,7 +68,7 @@ export const StepsManager = ({ steps, settings, onSettingsChange, access }: Step
               defaultMessage: 'Steps',
             })}
           </Typography>
-          {disabled ? <ProBadge feature="multistep" /> : null}
+          {access === 'unentitled' ? <ProBadge feature="multistep" /> : null}
         </Flex>
         <GatedButton
           access={access}
