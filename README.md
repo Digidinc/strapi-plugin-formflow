@@ -300,12 +300,11 @@ Paid plans are annual and priced per project. See [pricing](https://formflow.dig
 
 FormFlow sends **anonymous, opt-out** usage telemetry so we can see how many installs are active and prioritize what to build. We never collect personal data, form content, submissions, or environment secrets.
 
-Each install sends a one-time install event plus a daily heartbeat containing only:
+Each install sends a one-time install event plus a daily heartbeat. It identifies itself with an anonymous install id — a SHA-256 hash of your Strapi project UUID, which cannot be reversed back to your project — and reports its `plugin version`, `Strapi version`, `Node.js version`, `database client`, operating system, and whether it runs in `production` or `development`. An approximate country is derived at the edge, never from a stored IP.
 
-- An anonymous install id (a SHA-256 hash of your Strapi project UUID — not reversible to your project)
-- Plugin version, Strapi version, and Node.js version
-- License tier (`free` / `pro` / `business`) and total number of forms
-- Approximate country (derived at the edge, never your IP)
+The heartbeat also describes how the plugin is used, never what is inside it: your `license tier` and `license state`, how many forms exist and how many are active, the field count of your largest form, and a rough bucket for total submissions such as `101-1000` instead of an exact number. It lists the field types in use (`text`, `email`, `signature`, …) and the features you have configured (`webhooks`, `multistep`, `spam.turnstile`, …), both taken from FormFlow's own fixed list. Anything you wrote yourself — form titles, field labels, success messages, URLs, email addresses, and every submitted value — is never read and never sent.
+
+Along with the heartbeat we send a small daily summary of activity: when a paid feature was blocked on your plan, when the plugin version or license tier changed, when a form was created, and when submissions were exported (`csv`, `json`, `xlsx`, `pdf`). These are counted locally and shipped once a day in a single request, never as they happen, so telemetry never slows down a request or adds traffic while you work.
 
 **Opt out** at any time by setting:
 
