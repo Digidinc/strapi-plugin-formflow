@@ -1,6 +1,7 @@
 import type { Core } from '@strapi/strapi';
 
 import { APPROVAL_STATUSES, type ApprovalStatus } from '../services/submission';
+import { recordExport, recordGateHit } from '../utils/telemetry-record';
 
 /**
  * Koa context interface for submission controller methods
@@ -237,6 +238,7 @@ const submissionController = ({ strapi }: { strapi: Core.Strapi }) => ({
     // EE imports. Returns 402 without throwing when unentitled.
     const license = strapi.plugin('formflow').service('license');
     if (!license.can('approval')) {
+      recordGateHit(strapi, 'approval', 'business');
       ctx.status = 402;
       ctx.body = {
         error: {
@@ -428,6 +430,7 @@ const submissionController = ({ strapi }: { strapi: Core.Strapi }) => ({
       if (format === 'xlsx' || format === 'pdf') {
         const licenseService = strapi.plugin('formflow').service('license');
         if (!licenseService.can('export.advanced')) {
+          recordGateHit(strapi, 'export.advanced', 'pro');
           ctx.status = 402;
           ctx.body = {
             error: 'Payment Required',
@@ -436,6 +439,8 @@ const submissionController = ({ strapi }: { strapi: Core.Strapi }) => ({
           };
           return;
         }
+
+        recordExport(strapi, String(format));
 
         const { exportToXLSX, exportToPDF } = await import('../ee/export/index');
         const exportOpts = {
@@ -460,6 +465,8 @@ const submissionController = ({ strapi }: { strapi: Core.Strapi }) => ({
         }
         return;
       }
+
+      recordExport(strapi, String(format));
 
       if (format === 'json') {
         const json = await exportService.exportToJSON(formId, {
@@ -512,6 +519,7 @@ const submissionController = ({ strapi }: { strapi: Core.Strapi }) => ({
     const licenseService = strapi.plugin('formflow').service('license');
 
     if (!licenseService.can('webhooks')) {
+      recordGateHit(strapi, 'webhooks', 'pro');
       ctx.status = 402;
       ctx.body = {
         error: {
@@ -577,6 +585,7 @@ const submissionController = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     const licenseService = strapi.plugin('formflow').service('license');
     if (!licenseService.can('export.advanced')) {
+      recordGateHit(strapi, 'export.advanced', 'pro');
       ctx.status = 402;
       ctx.body = {
         error: 'Payment Required',

@@ -14,6 +14,7 @@ import {
   type NewFormData,
   type OldForm,
 } from '../utils/form-entitlements';
+import { recordGateHit } from '../utils/telemetry-record';
 
 export type { NewFormData, OldForm };
 
@@ -147,8 +148,12 @@ const paymentRequiredResponse = (
   ctx: Context,
   feature: string,
   requiredTier: FormEntitlementTier,
-  resolution: LicenseResolution
+  resolution: LicenseResolution,
+  strapi: Core.Strapi
 ) => {
+  // Which paywall the operator actually hit. Queued locally, shipped with the
+  // next daily telemetry heartbeat; never blocks or alters this response.
+  recordGateHit(strapi, feature, requiredTier);
   const metadata = formPaymentRequiredMetadata(feature, requiredTier);
   const canOfferUpgrade = resolution === 'resolved' && metadata.requiredTier !== undefined;
   const message =
@@ -305,7 +310,8 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
         ctx,
         entitlementBlock.feature,
         entitlementBlock.requiredTier,
-        strapi.plugin('formflow').service('license').resolution()
+        strapi.plugin('formflow').service('license').resolution(),
+        strapi
       );
     }
 
@@ -378,7 +384,8 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
           ctx,
           entitlementBlock.feature,
           entitlementBlock.requiredTier,
-          strapi.plugin('formflow').service('license').resolution()
+          strapi.plugin('formflow').service('license').resolution(),
+          strapi
         );
       }
 
@@ -467,7 +474,8 @@ const formController = ({ strapi }: { strapi: Core.Strapi }) => ({
           ctx,
           entitlementBlock.feature,
           entitlementBlock.requiredTier,
-          strapi.plugin('formflow').service('license').resolution()
+          strapi.plugin('formflow').service('license').resolution(),
+          strapi
         );
       }
 
