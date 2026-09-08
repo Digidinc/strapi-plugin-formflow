@@ -1,6 +1,7 @@
 import type { Core } from '@strapi/strapi';
 
 import { STEP_INDICATOR_FIELD, type UploadedFilesMap } from '../services/submission';
+import { recordGateHit } from '../utils/telemetry-record';
 
 /**
  * Koa context interface for public controller methods
@@ -391,6 +392,7 @@ const publicController = ({ strapi }: { strapi: Core.Strapi }) => ({
       return { data: result };
     } catch (error) {
       if (isPaymentRequiredError(error)) {
+        recordGateHit(strapi, 'saveResume', 'pro');
         ctx.status = 402;
         return {
           error: {
@@ -472,6 +474,7 @@ const publicController = ({ strapi }: { strapi: Core.Strapi }) => ({
       return { data: result };
     } catch (error) {
       if (isPaymentRequiredError(error)) {
+        recordGateHit(strapi, 'saveResume', 'pro');
         ctx.status = 402;
         return {
           error: {

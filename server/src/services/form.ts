@@ -1,5 +1,6 @@
 import type { Core } from '@strapi/strapi';
 import { v4 as uuidv4 } from 'uuid';
+import { recordFormPublished } from '../utils/telemetry-record';
 
 /**
  * Field type definition for the form builder
@@ -279,6 +280,13 @@ const formService = ({ strapi }: { strapi: Core.Strapi }) => ({
     const mergedSettings = { ...this.getDefaultSettings(), ...data.settings };
     const telegramError = await validateTelegramFormSettings(strapi, processedFields, mergedSettings);
     if (telegramError) throw new TelegramFormValidationError(telegramError);
+
+    recordFormPublished(
+      strapi,
+      processedFields.length,
+      mergedSettings.layout === 'multi-step',
+      processedFields.some((field) => (field as { conditional?: unknown }).conditional != null)
+    );
 
     return strapi.documents(CONTENT_TYPE_UID).create({
       status: 'published',
